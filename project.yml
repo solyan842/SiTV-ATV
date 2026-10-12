@@ -23,4 +23,16 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         CODE_SIGN_STYLE: Automatic
     scheme:
-      testTargets: []
+      testTargets:
+        - SiTVATVTests
+  SiTVATVTests:
+    type: bundle.unit-test
+    platform: tvOS
+    sources:
+      - path: SiTVATVTests
+    dependencies:
+      - target: SiTVATV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.solyan.sitvatv.tests
+        GENERATE_INFOPLIST_FILE: YES
