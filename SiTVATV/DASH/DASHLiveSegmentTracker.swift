@@ -32,12 +32,19 @@ struct DASHLiveSegmentTracker: Sendable, Equatable {
     }
 
     private func isNew(_ segment: DASHResolvedSegment) -> Bool {
-        if let time = segment.time, let latestTime {
-            return time > latestTime
+        if let time = segment.time {
+            if let latestTime {
+                return time > latestTime
+            }
+            if let latestNumber {
+                return segment.number > latestNumber
+            }
+            return true
         }
-        if segment.time != nil, latestTime == nil {
-            return segment.number > (latestNumber ?? 0)
+
+        if let latestNumber {
+            return segment.number > latestNumber
         }
-        return segment.number > (latestNumber ?? 0)
+        return true
     }
 }
