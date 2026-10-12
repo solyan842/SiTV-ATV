@@ -23,6 +23,7 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
 
     private let preparer: any DASHClearKeyPreparing
     private let contextBuilder: any DASHPlaybackContextBuilding
+    private let playbackController: any DASHPlaybackControlling
     private let maxVideoHeight: Int?
     private let segmentCount: Int
 
@@ -32,11 +33,13 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
     init(
         preparer: any DASHClearKeyPreparing = DASHClearKeySession(),
         contextBuilder: any DASHPlaybackContextBuilding = DASHPlaybackContextBuilder(),
+        playbackController: any DASHPlaybackControlling = DASHClearKeyPlaybackController(),
         maxVideoHeight: Int? = nil,
         segmentCount: Int = 6
     ) {
         self.preparer = preparer
         self.contextBuilder = contextBuilder
+        self.playbackController = playbackController
         self.maxVideoHeight = maxVideoHeight
         self.segmentCount = max(segmentCount, 1)
     }
@@ -87,7 +90,26 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
         }
     }
 
+    func resumePlayback() async throws {
+        guard let request = activeRequest,
+              let context = playbackContext else {
+            throw PlayerEngineError.failedToStart("DASH engine is not prepared")
+        }
+
+        do {
+            try await playbackController.resume(
+                context: context,
+                headers: request.source.headers
+            )
+        } catch let error as PlayerEngineError {
+            throw error
+        } catch {
+            throw PlayerEngineError.failedToStart(String(describing: error))
+        }
+    }
+
     func stop() async {
+        await playbackController.stop()
         activeRequest = nil
         playbackContext = nil
     }
