@@ -37,8 +37,10 @@ final class DASHPeriodReprepareEngineTests: XCTestCase {
         try await engine.start(request)
         try await engine.resumePlayback()
 
-        XCTAssertEqual(await preparer.prepareCount(), 2)
-        XCTAssertEqual(await controller.resumeCount(), 2)
+        let prepareCount = await preparer.prepareCount()
+        let resumeCount = await controller.resumeCount()
+        XCTAssertEqual(prepareCount, 2)
+        XCTAssertEqual(resumeCount, 2)
         XCTAssertEqual(engine.playbackContext?.preparation.periodIdentity, "id:p1")
     }
 
