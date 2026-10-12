@@ -41,10 +41,12 @@ final class DASHClearKeyMediaPipelineTests: XCTestCase {
         XCTAssertEqual(clear.flags, sample.flags)
         XCTAssertEqual(clear.decodeTime, sample.decodeTime)
         XCTAssertNil(clear.encryption)
-        XCTAssertEqual(await reader.lastBytes(), Data([0x01, 0x02, 0x03]))
+        let receivedBytes = await reader.lastBytes()
+        XCTAssertEqual(receivedBytes, Data([0x01, 0x02, 0x03]))
 
         try await pipeline.finalize()
-        XCTAssertTrue(await reader.wasFinalized())
+        let finalized = await reader.wasFinalized()
+        XCTAssertTrue(finalized)
     }
 
     func testRejectsMediaSegmentWithoutSelectedTrack() async throws {
