@@ -60,7 +60,15 @@ struct DefaultDASHRendererBuilder: DASHRendererBuilding {
     }
 }
 
-actor DASHClearKeyPlaybackController {
+protocol DASHPlaybackControlling: AnyObject {
+    func resume(
+        context: DASHClearKeyPlaybackContext,
+        headers: [String: String]
+    ) async throws
+    func stop() async
+}
+
+actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
     private let mediaSessionBuilder: any DASHMediaSessionBuilding
     private let batchBuilder: any DASHPlaybackBatchBuilding
     private let rendererBuilder: any DASHRendererBuilding
