@@ -5,7 +5,8 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
     func testCanPlayOnlyDASHClearKeySources() {
         let engine = DASHClearKeyPlayerEngine(
             preparer: StubDASHPreparer(preparation: makePreparation()),
-            contextBuilder: StubPlaybackContextBuilder()
+            contextBuilder: StubPlaybackContextBuilder(),
+            playbackController: StubPlaybackController()
         )
 
         XCTAssertTrue(engine.canPlay(makeSource()))
@@ -24,25 +25,16 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
     func testStartPreparesContextAndStopClearsState() async throws {
         let preparation = makePreparation()
         let preparer = StubDASHPreparer(preparation: preparation)
+        let controller = StubPlaybackController()
         let engine = DASHClearKeyPlayerEngine(
             preparer: preparer,
             contextBuilder: StubPlaybackContextBuilder(),
+            playbackController: controller,
             maxVideoHeight: 1080,
             segmentCount: 4
         )
         let source = makeSource()
-        let channel = Channel(
-            id: "test",
-            name: "Test",
-            group: "Test",
-            logoURL: nil,
-            sources: [source]
-        )
-        let request = PlaybackRequest(
-            channel: channel,
-            sourceIndex: 0,
-            source: source
-        )
+        let request = makeRequest(source: source)
 
         try await engine.start(request)
 
@@ -57,6 +49,45 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
 
         XCTAssertFalse(engine.isPrepared)
         XCTAssertNil(engine.activeRequest)
+        XCTAssertEqual(await controller.stopCount(), 2)
+    }
+
+    func testResumeForwardsPreparedContextAndSourceHeaders() async throws {
+        let controller = StubPlaybackController()
+        let engine = DASHClearKeyPlayerEngine(
+            preparer: StubDASHPreparer(preparation: makePreparation()),
+            contextBuilder: StubPlaybackContextBuilder(),
+            playbackController: controller
+        )
+        let source = StreamSource(
+            url: "https://example.com/manifest.mpd",
+            headers: ["Referer": "https://example.com/"],
+            manifestType: "mpd",
+            drmType: "clearkey",
+            drmKey: "00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
+        )
+
+        try await engine.start(makeRequest(source: source))
+        try await engine.resumePlayback()
+
+        let invocation = await controller.resumeInvocation()
+        XCTAssertEqual(invocation?.headers, source.headers)
+        XCTAssertNotNil(invocation?.context.preparation.keyMaterial)
+    }
+
+    private func makeRequest(source: StreamSource) -> PlaybackRequest {
+        let channel = Channel(
+            id: "test",
+            name: "Test",
+            group: "Test",
+            logoURL: nil,
+            sources: [source]
+        )
+        return PlaybackRequest(
+            channel: channel,
+            sourceIndex: 0,
+            source: source
+        )
     }
 
     private func makeSource(
@@ -132,5 +163,34 @@ private struct StubPlaybackContextBuilder: DASHPlaybackContextBuilding {
             video: nil,
             audio: nil
         )
+    }
+}
+
+private actor StubPlaybackController: DASHPlaybackControlling {
+    struct Invocation {
+        let context: DASHClearKeyPlaybackContext
+        let headers: [String: String]
+    }
+
+    private var lastResumeInvocation: Invocation?
+    private var stops = 0
+
+    func resume(
+        context: DASHClearKeyPlaybackContext,
+        headers: [String: String]
+    ) async throws {
+        lastResumeInvocation = Invocation(context: context, headers: headers)
+    }
+
+    func stop() async {
+        stops += 1
+    }
+
+    func resumeInvocation() -> Invocation? {
+        lastResumeInvocation
+    }
+
+    func stopCount() -> Int {
+        stops
     }
 }
