@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeAttempt: PlaybackAttempt?
 
     let avPlayerEngine: AVPlayerEngine
+    let vlcPlayerEngine: VLCPlayerEngine
     let dashRenderer: DASHSynchronizedRenderer
     let dashClearKeyEngine: DASHClearKeyPlayerEngine
 
@@ -24,6 +25,7 @@ final class AppModel: ObservableObject {
         self.repository = repository
 
         let avPlayerEngine = AVPlayerEngine()
+        let vlcPlayerEngine = VLCPlayerEngine()
         let dashRenderer = DASHSynchronizedRenderer()
         let dashController = DASHClearKeyPlaybackController(
             fixedRenderer: dashRenderer
@@ -33,10 +35,11 @@ final class AppModel: ObservableObject {
         )
 
         self.avPlayerEngine = avPlayerEngine
+        self.vlcPlayerEngine = vlcPlayerEngine
         self.dashRenderer = dashRenderer
         self.dashClearKeyEngine = dashClearKeyEngine
         self.coordinator = PlayerCoordinator(
-            engines: [dashClearKeyEngine, avPlayerEngine]
+            engines: [dashClearKeyEngine, avPlayerEngine, vlcPlayerEngine]
         )
     }
 
