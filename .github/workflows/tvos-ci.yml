@@ -31,8 +31,11 @@ jobs:
         run: xcodegen generate
 
       - name: Build and test
+        shell: bash
         run: |
           set -o pipefail
+          mkdir -p ci-logs
+          LOG_FILE="ci-logs/tvos-build-test.log"
           DESTINATION=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           data = json.load(sys.stdin)
@@ -45,13 +48,23 @@ jobs:
                       raise SystemExit
           ')
           if [ -z "$DESTINATION" ]; then
-            echo "No available Apple TV simulator found"
+            echo "No available Apple TV simulator found" | tee -a "$LOG_FILE"
             exit 1
           fi
-          echo "Using tvOS simulator: $DESTINATION"
+          echo "Using tvOS simulator: $DESTINATION" | tee -a "$LOG_FILE"
           xcodebuild \
             -project SiTVATV.xcodeproj \
             -scheme SiTVATV \
             -destination "platform=tvOS Simulator,id=$DESTINATION" \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            test 2>&1 | tee -a "$LOG_FILE"
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload durable build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvos-build-test-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-logs/tvos-build-test.log
+          if-no-files-found: warn
+          retention-days: 14
