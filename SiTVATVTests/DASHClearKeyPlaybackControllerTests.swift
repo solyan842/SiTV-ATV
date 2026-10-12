@@ -124,6 +124,10 @@ private final class SpySampleRenderer: DASHSampleRendering {
 
     func pause() {}
 
+    func primeVideo(_ sampleBuffer: CMSampleBuffer) {}
+
+    func primeAudio(_ sampleBuffer: CMSampleBuffer) {}
+
     func enqueueVideo(_ sampleBuffer: CMSampleBuffer) async throws {}
 
     func enqueueAudio(_ sampleBuffer: CMSampleBuffer) async throws {}
