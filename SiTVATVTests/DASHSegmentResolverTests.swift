@@ -40,6 +40,35 @@ final class DASHSegmentResolverTests: XCTestCase {
         )
     }
 
+    func testLatestSelectionReturnsTimelineTail() throws {
+        let representation = makeRepresentation(
+            template: DASHSegmentTemplate(
+                initialization: "init.mp4",
+                media: "$Number$-$Time$.m4s",
+                timescale: 1000,
+                duration: nil,
+                startNumber: 10,
+                presentationTimeOffset: 0,
+                timeline: [
+                    DASHSegmentTimelineEntry(startTime: 1_000, duration: 2_000, repeatCount: 5)
+                ]
+            )
+        )
+
+        let segments = try DASHSegmentResolver().mediaSegments(
+            for: representation,
+            maxCount: 3,
+            selection: .latest
+        )
+
+        XCTAssertEqual(segments.map(\.number), [13, 14, 15])
+        XCTAssertEqual(segments.map(\.time), [7_000, 9_000, 11_000])
+        XCTAssertEqual(
+            segments.map { $0.url.lastPathComponent },
+            ["13-7000.m4s", "14-9000.m4s", "15-11000.m4s"]
+        )
+    }
+
     func testResolvesDurationOnlySegmentsAndEscapedDollar() throws {
         let representation = makeRepresentation(
             bandwidth: 128_000,
