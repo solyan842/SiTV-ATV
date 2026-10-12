@@ -1,0 +1,26 @@
+name: SiTVATV
+options:
+  bundleIdPrefix: com.solyan
+  deploymentTarget:
+    tvOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: 5.10
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+targets:
+  SiTVATV:
+    type: application
+    platform: tvOS
+    sources:
+      - path: SiTVATV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.solyan.sitvatv
+        PRODUCT_NAME: SiTV
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: SiTV
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets: []
