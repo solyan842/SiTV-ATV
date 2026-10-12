@@ -45,11 +45,23 @@ struct DASHPlaybackPlanner {
             .filter { isAudio($0) }
             .flatMap(\.representations)
 
+        let selection: DASHSegmentSelection = manifest.type == .dynamic
+            ? .latest
+            : .earliest
+
         let video = try selectBest(videoCandidates).map {
-            try makeTrackPlan(representation: $0, segmentCount: segmentCount)
+            try makeTrackPlan(
+                representation: $0,
+                segmentCount: segmentCount,
+                selection: selection
+            )
         }
         let audio = try selectBest(audioCandidates).map {
-            try makeTrackPlan(representation: $0, segmentCount: segmentCount)
+            try makeTrackPlan(
+                representation: $0,
+                segmentCount: segmentCount,
+                selection: selection
+            )
         }
 
         let plan = DASHPlaybackPlan(video: video, audio: audio)
@@ -61,14 +73,16 @@ struct DASHPlaybackPlanner {
 
     private func makeTrackPlan(
         representation: DASHRepresentation,
-        segmentCount: Int
+        segmentCount: Int,
+        selection: DASHSegmentSelection
     ) throws -> DASHTrackPlan {
         DASHTrackPlan(
             representation: representation,
             initializationURL: try resolver.initializationURL(for: representation),
             mediaSegments: try resolver.mediaSegments(
                 for: representation,
-                maxCount: segmentCount
+                maxCount: segmentCount,
+                selection: selection
             )
         )
     }
