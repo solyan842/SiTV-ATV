@@ -277,7 +277,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
     }
 
     private func buildManifest() -> DASHManifest {
-        let documentDirectory = manifestURL.deletingLastPathComponent()
+        let documentDirectory = manifestURL.deletingLastPathComponent().appendingPathComponent("")
         let rootBaseURL = Self.resolve(manifestBaseURLText, against: documentDirectory)
 
         let resolvedPeriods = periods.map { period in
