@@ -13,13 +13,10 @@ final class AVPlayerEngine: PlayerEngine {
     }
 
     func canPlay(_ source: StreamSource) -> Bool {
-        guard source.drmType?.isEmpty ?? true else {
-            let drm = source.drmType?.lowercased() ?? ""
-            guard drm.contains("fairplay") || drm.contains("com.apple.fps") || drm.contains("skd") else {
-                return false
-            }
-            return source.headers.isEmpty
-        }
+        let drm = source.drmType?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        guard drm.isEmpty else { return false }
 
         let manifest = source.manifestType?.lowercased() ?? ""
         let url = source.url.lowercased()
