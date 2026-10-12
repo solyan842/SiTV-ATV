@@ -14,15 +14,19 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeAttempt: PlaybackAttempt?
 
     let avPlayerEngine: AVPlayerEngine
+    let vlcPlayerEngine: VLCPlayerEngine
 
     private let repository: PlaylistRepository
     private let coordinator: PlayerCoordinator
 
     init(repository: PlaylistRepository = PlaylistRepository()) {
         self.repository = repository
+
         let avPlayerEngine = AVPlayerEngine()
+        let vlcPlayerEngine = VLCPlayerEngine()
         self.avPlayerEngine = avPlayerEngine
-        self.coordinator = PlayerCoordinator(engines: [avPlayerEngine])
+        self.vlcPlayerEngine = vlcPlayerEngine
+        self.coordinator = PlayerCoordinator(engines: [avPlayerEngine, vlcPlayerEngine])
     }
 
     var groups: [String] {

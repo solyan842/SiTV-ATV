@@ -7,7 +7,8 @@ struct PlayerView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player: model.avPlayerEngine.player)
+
+            playbackSurface
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 6) {
@@ -25,6 +26,22 @@ struct PlayerView: View {
         }
         .onExitCommand {
             Task { await model.stopPlayback() }
+        }
+    }
+
+    @ViewBuilder
+    private var playbackSurface: some View {
+        switch model.activeAttempt?.engine {
+        case .vlc:
+            VLCPlayerSurface(engine: model.vlcPlayerEngine)
+        case .avPlayer, .none:
+            VideoPlayer(player: model.avPlayerEngine.player)
+        case .dash, .dashClearKey:
+            VStack(spacing: 18) {
+                ProgressView()
+                Text("Engine đang được chuẩn bị")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
