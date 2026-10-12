@@ -6,7 +6,7 @@ final class DASHPlaybackContextTests: XCTestCase {
     func testRejectsMissingTrackConfiguration() async throws {
         let trackID: UInt32 = 7
         let builder = DASHPlaybackContextBuilder(
-            trackReader: StubInitTrackReader(tracks: [])
+            trackReader: StubInitTrackReader(configuredTracks: [])
         )
         let preparation = DASHClearKeyPreparation(
             manifest: makeManifest(),
@@ -76,9 +76,9 @@ final class DASHPlaybackContextTests: XCTestCase {
 }
 
 private struct StubInitTrackReader: DASHInitTrackReading {
-    let tracks: [CMAFTrackConfiguration]
+    let configuredTracks: [CMAFTrackConfiguration]
 
     func tracks(from initializationData: Data) async throws -> [CMAFTrackConfiguration] {
-        tracks
+        configuredTracks
     }
 }
