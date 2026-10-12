@@ -46,6 +46,45 @@ final class DASHSampleBufferBuilderTests: XCTestCase {
         XCTAssertEqual(copied, payload)
     }
 
+    func testMarksNonSyncSampleAttachment() throws {
+        let track = makeAACTrack()
+        let format = try DASHAudioFormatFactory().makeFormatDescription(for: track)
+        let sample = CMAFParsedSample(
+            trackID: 2,
+            bytes: Data([0x01, 0x02]),
+            durationInTimescale: 1_024,
+            compositionTimeOffset: 0,
+            flags: [.sampleIsNonSyncSample],
+            encryption: nil,
+            decodeTime: 0
+        )
+
+        let buffer = try DASHSampleBufferBuilder().makeSampleBuffer(
+            sample: sample,
+            track: track,
+            formatDescription: format
+        )
+        let attachments = try XCTUnwrap(
+            CMSampleBufferGetSampleAttachmentsArray(
+                buffer,
+                createIfNecessary: false
+            )
+        )
+        XCTAssertGreaterThan(CFArrayGetCount(attachments), 0)
+        let dictionary = unsafeBitCast(
+            CFArrayGetValueAtIndex(attachments, 0),
+            to: CFDictionary.self
+        )
+        let value = CFDictionaryGetValue(
+            dictionary,
+            Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque()
+        )
+        XCTAssertEqual(
+            value,
+            Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+        )
+    }
+
     func testRejectsZeroTimescale() throws {
         let track = makeAACTrack(timescale: 0)
         let format = try DASHAudioFormatFactory().makeFormatDescription(for: track)
