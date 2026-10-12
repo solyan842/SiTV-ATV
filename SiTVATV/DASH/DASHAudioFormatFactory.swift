@@ -34,7 +34,7 @@ struct DASHAudioCodecParameterExtractor {
 
         switch audio.codecConfiguration {
         case .mp4Audio(let descriptor):
-            guard descriptor.decoderConfig.objectTypeIndication == .aac else {
+            guard descriptor.decoderConfig.objectTypeIndication == .audioISO14496_3 else {
                 throw DASHAudioFormatFactoryError.unsupportedAudioCodec
             }
             guard let magicCookie = descriptor.decoderConfig.decoderSpecificInfo,
