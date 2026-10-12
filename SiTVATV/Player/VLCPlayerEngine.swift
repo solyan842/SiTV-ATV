@@ -39,7 +39,9 @@ final class VLCPlayerEngine: PlayerEngine {
 
         await stop()
 
-        let media = VLCMedia(url: url)
+        guard let media = VLCMedia(url: url) else {
+            throw PlayerEngineError.failedToStart("VLCKit không thể tạo media")
+        }
         applyHTTPOptions(from: request.source.headers, to: media)
         mediaPlayer.drawable = renderView
         mediaPlayer.media = media
