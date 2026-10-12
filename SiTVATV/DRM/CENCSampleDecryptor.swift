@@ -146,21 +146,22 @@ struct CENCSampleDecryptor {
     private func update(_ input: Data, using cryptor: CCCryptorRef) throws -> Data {
         guard !input.isEmpty else { return Data() }
 
-        var output = Data(count: input.count)
+        let inputCount = input.count
+        var output = Data(count: inputCount)
         var moved = 0
         let status: CCCryptorStatus = input.withUnsafeBytes { inputBytes in
             output.withUnsafeMutableBytes { outputBytes in
                 CCCryptorUpdate(
                     cryptor,
                     inputBytes.baseAddress,
-                    input.count,
+                    inputCount,
                     outputBytes.baseAddress,
-                    output.count,
+                    inputCount,
                     &moved
                 )
             }
         }
-        guard status == kCCSuccess, moved == input.count else {
+        guard status == kCCSuccess, moved == inputCount else {
             throw CENCSampleDecryptorError.cryptoFailure(status)
         }
         output.count = moved
