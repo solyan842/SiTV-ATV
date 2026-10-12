@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var channels: [Channel] = []
+    @Published private(set) var sources: [PlaylistSource] = []
     @Published private(set) var activeSource: PlaylistSource = PlaylistSource(slot: 0, name: "", url: "")
     @Published var selectedGroup: String = "Tất cả"
     @Published var isLoading = false
@@ -35,9 +36,14 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
-        activeSource = await repository.activeSource()
+        await refreshSources()
         guard activeSource.isConfigured else { return }
         await loadPlaylist()
+    }
+
+    func refreshSources() async {
+        sources = await repository.sources()
+        activeSource = await repository.activeSource()
     }
 
     func loadPlaylist() async {
@@ -48,6 +54,7 @@ final class AppModel: ObservableObject {
         do {
             let result = try await repository.load()
             activeSource = result.source
+            sources = await repository.sources()
             channels = result.channels
             if !groups.contains(selectedGroup) {
                 selectedGroup = "Tất cả"
@@ -57,18 +64,35 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func configurePrimarySource(name: String, url: String) async {
-        var sources = await repository.sources()
-        if sources.isEmpty {
-            sources = (0..<PlaylistRepository.sourceCount).map {
-                PlaylistSource(slot: $0, name: "", url: "")
-            }
+    func saveSources(_ values: [PlaylistSource], activeSlot: Int) async {
+        await repository.saveSources(values)
+        await repository.selectSource(slot: activeSlot)
+        await refreshSources()
+        if activeSource.isConfigured {
+            await loadPlaylist()
+        } else {
+            channels = []
         }
-        sources[0] = PlaylistSource(slot: 0, name: name, url: url)
-        await repository.saveSources(sources)
-        await repository.selectSource(slot: 0)
-        activeSource = await repository.activeSource()
+    }
+
+    func selectSource(slot: Int) async {
+        await repository.selectSource(slot: slot)
+        await refreshSources()
+        guard activeSource.isConfigured else {
+            channels = []
+            return
+        }
         await loadPlaylist()
+    }
+
+    func clearSource(slot: Int) async {
+        await repository.clearSource(slot: slot)
+        await refreshSources()
+        if activeSource.isConfigured {
+            await loadPlaylist()
+        } else {
+            channels = []
+        }
     }
 
     func play(_ channel: Channel) async {
