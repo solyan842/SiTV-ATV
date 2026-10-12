@@ -130,6 +130,8 @@ final class AppModel: ObservableObject {
 
         do {
             try await dashClearKeyEngine.resumePlayback()
+        } catch let error as PlayerEngineError where error == .stopped {
+            return
         } catch {
             errorMessage = error.localizedDescription
             await stopPlayback()
