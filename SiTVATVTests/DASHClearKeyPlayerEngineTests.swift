@@ -49,7 +49,8 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
 
         XCTAssertFalse(engine.isPrepared)
         XCTAssertNil(engine.activeRequest)
-        XCTAssertEqual(await controller.stopCount(), 2)
+        let stopCount = await controller.stopCount()
+        XCTAssertEqual(stopCount, 2)
     }
 
     func testResumeForwardsPreparedContextAndSourceHeaders() async throws {
