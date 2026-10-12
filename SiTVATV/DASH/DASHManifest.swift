@@ -60,19 +60,6 @@ struct DASHSegmentTemplate: Sendable, Equatable {
     let startNumber: UInt64
     let presentationTimeOffset: UInt64
     let timeline: [DASHSegmentTimelineEntry]
-
-    func inheriting(from parent: DASHSegmentTemplate?) -> DASHSegmentTemplate {
-        guard let parent else { return self }
-        return DASHSegmentTemplate(
-            initialization: initialization ?? parent.initialization,
-            media: media ?? parent.media,
-            timescale: timescale == 1 ? parent.timescale : timescale,
-            duration: duration ?? parent.duration,
-            startNumber: startNumber == 1 ? parent.startNumber : startNumber,
-            presentationTimeOffset: presentationTimeOffset == 0 ? parent.presentationTimeOffset : presentationTimeOffset,
-            timeline: timeline.isEmpty ? parent.timeline : timeline
-        )
-    }
 }
 
 struct DASHSegmentTimelineEntry: Sendable, Equatable {
