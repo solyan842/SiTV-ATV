@@ -84,13 +84,16 @@ struct DASHSampleBufferBuilder {
         guard createStatus == noErr, let blockBuffer else {
             throw DASHSampleBufferBuilderError.blockBuffer(createStatus)
         }
+        guard !data.isEmpty else {
+            return blockBuffer
+        }
 
         let copyStatus = data.withUnsafeBytes { bytes -> OSStatus in
-            guard data.isEmpty || bytes.baseAddress != nil else {
+            guard let baseAddress = bytes.baseAddress else {
                 return kCMBlockBufferBadPointerParameterErr
             }
             return CMBlockBufferReplaceDataBytes(
-                with: bytes.baseAddress ?? UnsafeRawPointer(bitPattern: 1)!,
+                with: baseAddress,
                 blockBuffer: blockBuffer,
                 offsetIntoDestination: 0,
                 dataLength: data.count
