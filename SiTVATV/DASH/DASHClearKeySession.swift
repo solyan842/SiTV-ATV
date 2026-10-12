@@ -25,19 +25,22 @@ struct DASHClearKeyPreparation: Sendable, Equatable {
     let video: DASHPreparedTrack?
     let audio: DASHPreparedTrack?
     let manifestURL: URL?
+    let periodIdentity: String?
 
     init(
         manifest: DASHManifest,
         keyMaterial: ClearKeyMaterial,
         video: DASHPreparedTrack?,
         audio: DASHPreparedTrack?,
-        manifestURL: URL? = nil
+        manifestURL: URL? = nil,
+        periodIdentity: String? = nil
     ) {
         self.manifest = manifest
         self.keyMaterial = keyMaterial
         self.video = video
         self.audio = audio
         self.manifestURL = manifestURL
+        self.periodIdentity = periodIdentity
     }
 }
 
@@ -102,7 +105,8 @@ struct DASHClearKeySession {
             keyMaterial: material,
             video: video,
             audio: audio,
-            manifestURL: manifestURL
+            manifestURL: manifestURL,
+            periodIdentity: playbackPlan.periodIdentity
         )
     }
 
