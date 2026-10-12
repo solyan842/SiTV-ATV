@@ -10,7 +10,14 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
 
         XCTAssertTrue(engine.canPlay(makeSource()))
         XCTAssertTrue(engine.canPlay(makeSource(drmType: "org.w3.clearkey")))
-        XCTAssertFalse(engine.canPlay(makeSource(manifestType: "hls")))
+        XCTAssertFalse(
+            engine.canPlay(
+                makeSource(
+                    url: "https://example.com/live.m3u8",
+                    manifestType: "hls"
+                )
+            )
+        )
         XCTAssertFalse(engine.canPlay(makeSource(drmType: nil)))
     }
 
@@ -53,11 +60,12 @@ final class DASHClearKeyPlayerEngineTests: XCTestCase {
     }
 
     private func makeSource(
+        url: String = "https://example.com/manifest.mpd",
         manifestType: String? = "mpd",
         drmType: String? = "clearkey"
     ) -> StreamSource {
         StreamSource(
-            url: "https://example.com/manifest.mpd",
+            url: url,
             manifestType: manifestType,
             drmType: drmType,
             drmKey: "00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
