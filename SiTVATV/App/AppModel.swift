@@ -14,15 +14,30 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeAttempt: PlaybackAttempt?
 
     let avPlayerEngine: AVPlayerEngine
+    let dashRenderer: DASHSynchronizedRenderer
+    let dashClearKeyEngine: DASHClearKeyPlayerEngine
 
     private let repository: PlaylistRepository
     private let coordinator: PlayerCoordinator
 
     init(repository: PlaylistRepository = PlaylistRepository()) {
         self.repository = repository
+
         let avPlayerEngine = AVPlayerEngine()
+        let dashRenderer = DASHSynchronizedRenderer()
+        let dashController = DASHClearKeyPlaybackController(
+            fixedRenderer: dashRenderer
+        )
+        let dashClearKeyEngine = DASHClearKeyPlayerEngine(
+            playbackController: dashController
+        )
+
         self.avPlayerEngine = avPlayerEngine
-        self.coordinator = PlayerCoordinator(engines: [avPlayerEngine])
+        self.dashRenderer = dashRenderer
+        self.dashClearKeyEngine = dashClearKeyEngine
+        self.coordinator = PlayerCoordinator(
+            engines: [dashClearKeyEngine, avPlayerEngine]
+        )
     }
 
     var groups: [String] {
@@ -104,6 +119,17 @@ final class AppModel: ObservableObject {
             isPlayerPresented = true
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func resumeDASHPlayback() async {
+        guard activeAttempt?.engine == .dashClearKey else { return }
+
+        do {
+            try await dashClearKeyEngine.resumePlayback()
+        } catch {
+            errorMessage = error.localizedDescription
+            await stopPlayback()
         }
     }
 
