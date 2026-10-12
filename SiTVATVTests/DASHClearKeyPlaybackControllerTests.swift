@@ -74,6 +74,13 @@ private actor BlockingMediaSession: DASHMediaSessionRunning {
         return DASHClearKeyMediaOutput(video: [], audio: [])
     }
 
+    func process(
+        videoSegments: [DASHResolvedSegment],
+        audioSegments: [DASHResolvedSegment]
+    ) async throws -> DASHClearKeyMediaOutput {
+        DASHClearKeyMediaOutput(video: [], audio: [])
+    }
+
     func finalize() async throws {
         finalizations += 1
     }
