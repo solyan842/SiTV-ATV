@@ -41,7 +41,8 @@ final class DASHClearKeyMediaProcessorTests: XCTestCase {
         XCTAssertEqual(result.baseMediaDecodeTimes[7], 9_000)
 
         try await processor.finalize()
-        XCTAssertTrue(await parser.wasFinalized())
+        let wasFinalized = await parser.wasFinalized()
+        XCTAssertTrue(wasFinalized)
     }
 
     func testRejectsSampleFromUnexpectedTrack() async throws {
