@@ -47,24 +47,30 @@ struct DASHPlaybackContextBuilder {
     func make(
         preparation: DASHClearKeyPreparation
     ) async throws -> DASHClearKeyPlaybackContext {
-        let video = try await preparation.video.map { preparedTrack in
+        let video: DASHPlaybackTrackContext?
+        if let preparedTrack = preparation.video {
             let configuration = try await configuration(for: preparedTrack)
             let format = try videoFormatFactory.makeFormatDescription(for: configuration)
-            return DASHPlaybackTrackContext(
+            video = DASHPlaybackTrackContext(
                 preparedTrack: preparedTrack,
                 configuration: configuration,
                 formatDescription: format
             )
+        } else {
+            video = nil
         }
 
-        let audio = try await preparation.audio.map { preparedTrack in
+        let audio: DASHPlaybackTrackContext?
+        if let preparedTrack = preparation.audio {
             let configuration = try await configuration(for: preparedTrack)
             let format = try audioFormatFactory.makeFormatDescription(for: configuration)
-            return DASHPlaybackTrackContext(
+            audio = DASHPlaybackTrackContext(
                 preparedTrack: preparedTrack,
                 configuration: configuration,
                 formatDescription: format
             )
+        } else {
+            audio = nil
         }
 
         return DASHClearKeyPlaybackContext(
