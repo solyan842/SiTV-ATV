@@ -5,17 +5,15 @@ import VLCKit
 final class VLCPlayerEngine: PlayerEngine {
     let kind: PlayerEngineKind = .vlc
     let mediaPlayer = VLCMediaPlayer()
+    let renderView: UIView
 
     private let startupTimeoutNanoseconds: UInt64
-    private weak var drawable: UIView?
 
     init(startupTimeoutSeconds: Double = 12) {
         startupTimeoutNanoseconds = UInt64(max(startupTimeoutSeconds, 1) * 1_000_000_000)
-    }
-
-    func attachDrawable(_ view: UIView?) {
-        drawable = view
-        mediaPlayer.drawable = view
+        renderView = UIView(frame: .zero)
+        renderView.backgroundColor = .black
+        mediaPlayer.drawable = renderView
     }
 
     func canPlay(_ source: StreamSource) -> Bool {
@@ -43,7 +41,7 @@ final class VLCPlayerEngine: PlayerEngine {
 
         let media = VLCMedia(url: url)
         applyHTTPOptions(from: request.source.headers, to: media)
-        mediaPlayer.drawable = drawable
+        mediaPlayer.drawable = renderView
         mediaPlayer.media = media
         mediaPlayer.play()
 
