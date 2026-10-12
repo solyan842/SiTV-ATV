@@ -31,8 +31,8 @@ final class DASHAudioFormatFactoryTests: XCTestCase {
         let descriptor = ElementaryStreamDescriptor(
             esID: 2,
             decoderConfig: .init(
-                objectTypeIndication: .aac,
-                streamType: .audio,
+                objectTypeIndication: .audioISO14496_3,
+                streamType: .audioStream,
                 upStream: false,
                 bufferSizeDB: 0,
                 maxBitrate: 128_000,
