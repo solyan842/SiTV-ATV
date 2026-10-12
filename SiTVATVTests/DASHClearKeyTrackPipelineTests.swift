@@ -24,13 +24,15 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         let results = try await pipeline.processPlannedSegments()
 
         XCTAssertEqual(results.map(\.segmentIndex), [0, 1])
-        XCTAssertEqual(await processor.payloads(), [Data([0x01]), Data([0x02])])
+        let payloads = await processor.payloads()
+        XCTAssertEqual(payloads, [Data([0x01]), Data([0x02])])
         let requests = await loader.requests()
         XCTAssertEqual(requests.map(\.url), [firstURL, secondURL])
         XCTAssertEqual(requests.map(\.headers), [headers, headers])
 
         try await pipeline.finalize()
-        XCTAssertTrue(await processor.wasFinalized())
+        let finalized = await processor.wasFinalized()
+        XCTAssertTrue(finalized)
     }
 
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
@@ -52,7 +54,8 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
                 .segmentIndexOutOfRange(3)
             )
         }
-        XCTAssertTrue(await loader.requests().isEmpty)
+        let requests = await loader.requests()
+        XCTAssertTrue(requests.isEmpty)
     }
 
     private func makePlan(urls: [URL]) -> DASHTrackPlan {
