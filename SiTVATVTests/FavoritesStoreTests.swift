@@ -11,12 +11,14 @@ final class FavoritesStoreTests: XCTestCase {
         let store = FavoritesStore(defaults: defaults)
 
         let afterAdd = await store.toggle(channelID: "vtv1")
+        let persistedAfterAdd = await store.channelIDs()
         XCTAssertEqual(afterAdd, Set(["vtv1"]))
-        XCTAssertEqual(await store.channelIDs(), Set(["vtv1"]))
+        XCTAssertEqual(persistedAfterAdd, Set(["vtv1"]))
 
         let afterRemove = await store.toggle(channelID: "vtv1")
+        let persistedAfterRemove = await store.channelIDs()
         XCTAssertTrue(afterRemove.isEmpty)
-        XCTAssertTrue(await store.channelIDs().isEmpty)
+        XCTAssertTrue(persistedAfterRemove.isEmpty)
     }
 
     func testSetFavoriteIsIdempotent() async throws {
