@@ -73,12 +73,7 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
         await stop()
 
         do {
-            let preparation = try await preparer.prepare(
-                source: request.source,
-                maxVideoHeight: maxVideoHeight,
-                segmentCount: segmentCount
-            )
-            let context = try await contextBuilder.make(preparation: preparation)
+            let context = try await prepareContext(for: request.source)
             activeRequest = request
             playbackContext = context
         } catch let error as PlayerEngineError {
@@ -92,19 +87,39 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
 
     func resumePlayback() async throws {
         guard let request = activeRequest,
-              let context = playbackContext else {
+              var context = playbackContext else {
             throw PlayerEngineError.failedToStart("DASH engine is not prepared")
         }
 
-        do {
-            try await playbackController.resume(
-                context: context,
-                headers: request.source.headers
-            )
-        } catch let error as PlayerEngineError {
-            throw error
-        } catch {
-            throw PlayerEngineError.failedToStart(String(describing: error))
+        while true {
+            do {
+                try await playbackController.resume(
+                    context: context,
+                    headers: request.source.headers
+                )
+                return
+            } catch DASHPlaybackControllerError.reprepareRequired {
+                guard activeRequest == request else {
+                    throw PlayerEngineError.stopped
+                }
+
+                do {
+                    let refreshedContext = try await prepareContext(for: request.source)
+                    guard activeRequest == request else {
+                        throw PlayerEngineError.stopped
+                    }
+                    playbackContext = refreshedContext
+                    context = refreshedContext
+                } catch let error as PlayerEngineError {
+                    throw error
+                } catch {
+                    throw PlayerEngineError.failedToStart(String(describing: error))
+                }
+            } catch let error as PlayerEngineError {
+                throw error
+            } catch {
+                throw PlayerEngineError.failedToStart(String(describing: error))
+            }
         }
     }
 
@@ -112,6 +127,17 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
         await playbackController.stop()
         activeRequest = nil
         playbackContext = nil
+    }
+
+    private func prepareContext(
+        for source: StreamSource
+    ) async throws -> DASHClearKeyPlaybackContext {
+        let preparation = try await preparer.prepare(
+            source: source,
+            maxVideoHeight: maxVideoHeight,
+            segmentCount: segmentCount
+        )
+        return try await contextBuilder.make(preparation: preparation)
     }
 
     private func normalized(_ value: String?) -> String {
