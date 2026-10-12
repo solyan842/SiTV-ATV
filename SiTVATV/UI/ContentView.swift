@@ -14,7 +14,7 @@ struct ContentView: View {
             }
             .navigationTitle("Nhóm kênh")
         } detail: {
-            ZStack {
+            ZStack(alignment: .topTrailing) {
                 Color.black.ignoresSafeArea()
 
                 if model.channels.isEmpty {
@@ -22,17 +22,17 @@ struct ContentView: View {
                 } else {
                     channelGrid
                 }
+
+                Button {
+                    showSettings = true
+                } label: {
+                    Label("Cài đặt", systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 20)
+                .padding(.trailing, 36)
             }
             .navigationTitle(model.activeSource.name.isEmpty ? "SiTV" : model.activeSource.name)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Label("Cài đặt", systemImage: "gearshape")
-                    }
-                }
-            }
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
