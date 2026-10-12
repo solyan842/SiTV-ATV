@@ -37,11 +37,13 @@ final class DASHClearKeyMediaSessionTests: XCTestCase {
                 makeResolvedSegment(number: 12, path: "a12.m4s")
             ]
         )
+        let videoRefreshedNumbers = await video.refreshedNumbers()
+        let audioRefreshedNumbers = await audio.refreshedNumbers()
 
         XCTAssertEqual(output.video.map(\.segmentIndex), [7])
         XCTAssertEqual(output.audio.map(\.segmentIndex), [11, 12])
-        XCTAssertEqual(await video.refreshedNumbers(), [7])
-        XCTAssertEqual(await audio.refreshedNumbers(), [11, 12])
+        XCTAssertEqual(videoRefreshedNumbers, [7])
+        XCTAssertEqual(audioRefreshedNumbers, [11, 12])
     }
 
     func testMissingTrackProducesEmptySide() async throws {
