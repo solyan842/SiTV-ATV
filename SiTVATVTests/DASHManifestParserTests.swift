@@ -86,7 +86,8 @@ final class DASHManifestParserTests: XCTestCase {
         )
 
         XCTAssertEqual(manifest.type, .dynamic)
-        XCTAssertEqual(manifest.minimumUpdatePeriod, 6.5, accuracy: 0.0001)
+        let minimumUpdatePeriod = try XCTUnwrap(manifest.minimumUpdatePeriod)
+        XCTAssertEqual(minimumUpdatePeriod, 6.5, accuracy: 0.0001)
         let representation = try XCTUnwrap(manifest.periods.first?.adaptationSets.first?.representations.first)
         XCTAssertEqual(representation.defaultKeyID?.uuidString.lowercased(), "00112233-4455-6677-8899-aabbccddeeff")
         XCTAssertEqual(representation.segmentTemplate?.duration, 96000)
