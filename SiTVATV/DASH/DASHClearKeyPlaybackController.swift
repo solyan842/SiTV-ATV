@@ -76,6 +76,7 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
 
     private var mediaSession: (any DASHMediaSessionRunning)?
     private var renderer: (any DASHSampleRendering)?
+    private var playbackGeneration: UInt64 = 0
     private(set) var isPlaying = false
 
     init(
@@ -95,40 +96,64 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
         headers: [String: String]
     ) async throws {
         await stop()
+        let generation = playbackGeneration
 
         let session = try await mediaSessionBuilder.make(
             preparation: context.preparation,
             headers: headers
         )
 
+        var pendingRenderer: (any DASHSampleRendering)?
         do {
+            try ensureCurrent(generation)
+
             let output = try await session.processPlannedSegments()
+            try ensureCurrent(generation)
+
             let batch = try batchBuilder.make(output: output, context: context)
+            try ensureCurrent(generation)
+
             let renderer: any DASHSampleRendering
             if let fixedRenderer {
                 renderer = fixedRenderer
             } else {
                 renderer = await rendererBuilder.makeRenderer()
             }
+            pendingRenderer = renderer
+            try ensureCurrent(generation)
 
             for sampleBuffer in batch.video {
+                try ensureCurrent(generation)
                 try await renderer.enqueueVideo(sampleBuffer)
+                try ensureCurrent(generation)
             }
             for sampleBuffer in batch.audio {
+                try ensureCurrent(generation)
                 try await renderer.enqueueAudio(sampleBuffer)
+                try ensureCurrent(generation)
             }
+
+            try ensureCurrent(generation)
             await renderer.start(at: batch.sourceTime)
+            try ensureCurrent(generation)
 
             mediaSession = session
             self.renderer = renderer
+            pendingRenderer = nil
             isPlaying = true
         } catch {
+            if let pendingRenderer {
+                await pendingRenderer.pause()
+                await pendingRenderer.flush()
+            }
             try? await session.finalize()
             throw error
         }
     }
 
     func stop() async {
+        playbackGeneration &+= 1
+
         if let renderer {
             await renderer.pause()
             await renderer.flush()
@@ -139,5 +164,11 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
         renderer = nil
         mediaSession = nil
         isPlaying = false
+    }
+
+    private func ensureCurrent(_ generation: UInt64) throws {
+        guard generation == playbackGeneration else {
+            throw PlayerEngineError.stopped
+        }
     }
 }
