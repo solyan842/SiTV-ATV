@@ -8,13 +8,17 @@ struct PlayerView: View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
 
-            if model.activeAttempt?.engine == .dashClearKey {
+            switch model.activeAttempt?.engine {
+            case .dashClearKey:
                 DASHDisplayLayerView(displayLayer: model.dashRenderer.displayLayer)
                     .ignoresSafeArea()
                     .task(id: model.activeAttempt) {
                         await model.resumeDASHPlayback()
                     }
-            } else {
+            case .vlc:
+                VLCPlayerSurface(engine: model.vlcPlayerEngine)
+                    .ignoresSafeArea()
+            default:
                 VideoPlayer(player: model.avPlayerEngine.player)
                     .ignoresSafeArea()
             }
