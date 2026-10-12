@@ -1,0 +1,40 @@
+name: tvOS CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev/**
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Show available tvOS simulators
+        run: xcrun simctl list devices available | grep -i "Apple TV" || true
+
+      - name: Build and test
+        run: |
+          set -o pipefail
+          DESTINATION=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*\(Apple TV[^()]*(.*)\) (\([0-9A-F-]*\)) (Shutdown)$/\2/p' | head -n 1)
+          if [ -z "$DESTINATION" ]; then
+            echo "No available Apple TV simulator found"
+            exit 1
+          fi
+          xcodebuild \
+            -project SiTVATV.xcodeproj \
+            -scheme SiTVATV \
+            -destination "platform=tvOS Simulator,id=$DESTINATION" \
+            CODE_SIGNING_ALLOWED=NO \
+            test
