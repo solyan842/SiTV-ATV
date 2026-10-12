@@ -7,8 +7,17 @@ struct PlayerView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player: model.avPlayerEngine.player)
-                .ignoresSafeArea()
+
+            if model.activeAttempt?.engine == .dashClearKey {
+                DASHDisplayLayerView(displayLayer: model.dashRenderer.displayLayer)
+                    .ignoresSafeArea()
+                    .task(id: model.activeAttempt) {
+                        await model.resumeDASHPlayback()
+                    }
+            } else {
+                VideoPlayer(player: model.avPlayerEngine.player)
+                    .ignoresSafeArea()
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 if let channel = model.activeChannel {
