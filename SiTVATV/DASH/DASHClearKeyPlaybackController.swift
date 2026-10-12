@@ -97,6 +97,10 @@ struct DefaultDASHRendererBuilder: DASHRendererBuilding {
     }
 }
 
+enum DASHPlaybackControllerError: Error, Equatable {
+    case reprepareRequired
+}
+
 protocol DASHPlaybackControlling: AnyObject {
     func resume(
         context: DASHClearKeyPlaybackContext,
@@ -259,7 +263,8 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
 
         let initialPlan = DASHPlaybackPlan(
             video: preparation.video?.plan,
-            audio: preparation.audio?.plan
+            audio: preparation.audio?.plan,
+            periodIdentity: preparation.periodIdentity
         )
         let segmentCount = max(
             initialPlan.video?.mediaSegments.count ?? 0,
@@ -297,6 +302,9 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
             try ensureCurrent(generation)
             refreshInterval = refresh.nextRefreshInterval
 
+            if refresh.requiresReprepare {
+                throw DASHPlaybackControllerError.reprepareRequired
+            }
             guard !refresh.isEmpty else { continue }
 
             let output = try await session.process(
