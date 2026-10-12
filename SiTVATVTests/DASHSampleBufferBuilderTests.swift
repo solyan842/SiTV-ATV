@@ -54,7 +54,7 @@ final class DASHSampleBufferBuilderTests: XCTestCase {
             bytes: Data([0x01, 0x02]),
             durationInTimescale: 1_024,
             compositionTimeOffset: 0,
-            flags: [.sampleIsNonSyncSample],
+            flags: .nonSyncSample,
             encryption: nil,
             decodeTime: 0
         )
