@@ -25,7 +25,7 @@ enum DASHResourceLoaderError: Error, Equatable {
     case httpStatus(Int)
 }
 
-protocol DASHResourceLoading: Sendable {
+protocol DASHResourceLoading {
     func loadManifest(
         from url: URL,
         headers: [String: String]
@@ -37,7 +37,7 @@ protocol DASHResourceLoading: Sendable {
     ) async throws -> Data
 }
 
-struct DASHResourceLoader: DASHResourceLoading, Sendable {
+struct DASHResourceLoader: DASHResourceLoading {
     private let client: any DASHHTTPClient
     private let timeout: TimeInterval
 
