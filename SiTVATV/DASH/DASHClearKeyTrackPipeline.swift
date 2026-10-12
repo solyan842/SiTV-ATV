@@ -53,7 +53,10 @@ struct DASHClearKeyTrackPipeline {
         guard plan.mediaSegments.indices.contains(index) else {
             throw DASHClearKeyTrackPipelineError.segmentIndexOutOfRange(index)
         }
-        let segment = plan.mediaSegments[index]
+        return try await process(segment: plan.mediaSegments[index])
+    }
+
+    func process(segment: DASHResolvedSegment) async throws -> ParsedMediaSegment {
         let data = try await loader.loadData(from: segment.url, headers: headers)
         return try await processor.process(segmentData: data)
     }
@@ -61,8 +64,8 @@ struct DASHClearKeyTrackPipeline {
     func processPlannedSegments() async throws -> [ParsedMediaSegment] {
         var output: [ParsedMediaSegment] = []
         output.reserveCapacity(plan.mediaSegments.count)
-        for index in plan.mediaSegments.indices {
-            output.append(try await processSegment(at: index))
+        for segment in plan.mediaSegments {
+            output.append(try await process(segment: segment))
         }
         return output
     }
