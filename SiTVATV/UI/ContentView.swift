@@ -6,10 +6,20 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $model.selectedGroup) {
+            List {
                 ForEach(model.groups, id: \.self) { group in
-                    Text(group)
-                        .tag(group)
+                    Button {
+                        model.selectedGroup = group
+                    } label: {
+                        HStack {
+                            Text(group)
+                            Spacer()
+                            if model.selectedGroup == group {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .navigationTitle("Nhóm kênh")
