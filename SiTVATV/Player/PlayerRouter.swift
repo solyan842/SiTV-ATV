@@ -23,7 +23,7 @@ struct PlayerRouter: Sendable {
         }
 
         if isFairPlay(drm) {
-            return isHLS(manifest: manifest, url: url) ? [.avPlayer] : []
+            return []
         }
 
         if isDASH(manifest: manifest, url: url) {
