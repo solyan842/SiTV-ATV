@@ -21,16 +21,22 @@ final class PlaylistRepositoryTests: XCTestCase {
             PlaylistSource(slot: 3, name: "Backup", url: "https://example.com/two.m3u")
         ])
 
-        XCTAssertEqual(await repository.configuredSources().map(\.slot), [1, 3])
-        XCTAssertEqual(await repository.activeSourceIndex(), 1)
+        let configuredSlots = await repository.configuredSources().map(\.slot)
+        let initialActive = await repository.activeSourceIndex()
+        XCTAssertEqual(configuredSlots, [1, 3])
+        XCTAssertEqual(initialActive, 1)
 
         await repository.selectSource(slot: 3)
-        XCTAssertEqual(await repository.activeSourceIndex(), 3)
-        XCTAssertEqual(await repository.activeSource().name, "Backup")
+        let selectedActive = await repository.activeSourceIndex()
+        let selectedName = await repository.activeSource().name
+        XCTAssertEqual(selectedActive, 3)
+        XCTAssertEqual(selectedName, "Backup")
 
         await repository.clearSource(slot: 3)
-        XCTAssertEqual(await repository.activeSourceIndex(), 1)
-        XCTAssertEqual(await repository.activeSource().name, "Primary")
+        let fallbackActive = await repository.activeSourceIndex()
+        let fallbackName = await repository.activeSource().name
+        XCTAssertEqual(fallbackActive, 1)
+        XCTAssertEqual(fallbackName, "Primary")
     }
 
     func testSelectingUnconfiguredSlotIsIgnored() async throws {
@@ -47,6 +53,7 @@ final class PlaylistRepositoryTests: XCTestCase {
         ])
 
         await repository.selectSource(slot: 4)
-        XCTAssertEqual(await repository.activeSourceIndex(), 2)
+        let active = await repository.activeSourceIndex()
+        XCTAssertEqual(active, 2)
     }
 }
