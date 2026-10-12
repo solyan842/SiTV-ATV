@@ -2,6 +2,10 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
+enum DASHSynchronizedRendererError: Error, Equatable {
+    case notRunning
+}
+
 @MainActor
 final class DASHSynchronizedRenderer {
     let displayLayer: AVSampleBufferDisplayLayer
@@ -38,16 +42,52 @@ final class DASHSynchronizedRenderer {
         synchronizer.rate = 0
     }
 
+    func primeVideo(_ sampleBuffer: CMSampleBuffer) {
+        videoRenderer.enqueue(sampleBuffer)
+    }
+
+    func primeAudio(_ sampleBuffer: CMSampleBuffer) {
+        audioRenderer.enqueue(sampleBuffer)
+    }
+
     func enqueueVideo(_ sampleBuffer: CMSampleBuffer) async throws {
+        try await waitUntilVideoReady()
         videoRenderer.enqueue(sampleBuffer)
     }
 
     func enqueueAudio(_ sampleBuffer: CMSampleBuffer) async throws {
+        try await waitUntilAudioReady()
         audioRenderer.enqueue(sampleBuffer)
     }
 
     func flush() async {
         videoRenderer.flush()
         audioRenderer.flush()
+    }
+
+    private func waitUntilVideoReady() async throws {
+        while !videoRenderer.isReadyForMoreMediaData {
+            guard synchronizer.rate != 0 else {
+                throw DASHSynchronizedRendererError.notRunning
+            }
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        guard synchronizer.rate != 0 else {
+            throw DASHSynchronizedRendererError.notRunning
+        }
+    }
+
+    private func waitUntilAudioReady() async throws {
+        while !audioRenderer.isReadyForMoreMediaData {
+            guard synchronizer.rate != 0 else {
+                throw DASHSynchronizedRendererError.notRunning
+            }
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        guard synchronizer.rate != 0 else {
+            throw DASHSynchronizedRendererError.notRunning
+        }
     }
 }
