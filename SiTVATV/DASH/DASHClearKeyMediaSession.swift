@@ -3,6 +3,7 @@ import Foundation
 
 protocol DASHClearKeyTrackProcessing {
     func processPlannedSegments() async throws -> [ParsedMediaSegment]
+    func process(segment: DASHResolvedSegment) async throws -> ParsedMediaSegment
     func finalize() async throws
 }
 
@@ -88,6 +89,29 @@ struct DASHClearKeyMediaSession {
         let video = try await videoPipeline?.processPlannedSegments() ?? []
         let audio = try await audioPipeline?.processPlannedSegments() ?? []
         return DASHClearKeyMediaOutput(video: video, audio: audio)
+    }
+
+    func process(
+        videoSegments: [DASHResolvedSegment],
+        audioSegments: [DASHResolvedSegment]
+    ) async throws -> DASHClearKeyMediaOutput {
+        var videoOutput: [ParsedMediaSegment] = []
+        videoOutput.reserveCapacity(videoSegments.count)
+        if let videoPipeline {
+            for segment in videoSegments {
+                videoOutput.append(try await videoPipeline.process(segment: segment))
+            }
+        }
+
+        var audioOutput: [ParsedMediaSegment] = []
+        audioOutput.reserveCapacity(audioSegments.count)
+        if let audioPipeline {
+            for segment in audioSegments {
+                audioOutput.append(try await audioPipeline.process(segment: segment))
+            }
+        }
+
+        return DASHClearKeyMediaOutput(video: videoOutput, audio: audioOutput)
     }
 
     func finalize() async throws {
