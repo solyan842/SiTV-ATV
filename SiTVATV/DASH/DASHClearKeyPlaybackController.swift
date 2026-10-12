@@ -72,6 +72,7 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
     private let mediaSessionBuilder: any DASHMediaSessionBuilding
     private let batchBuilder: any DASHPlaybackBatchBuilding
     private let rendererBuilder: any DASHRendererBuilding
+    private let fixedRenderer: (any DASHSampleRendering)?
 
     private var mediaSession: (any DASHMediaSessionRunning)?
     private var renderer: (any DASHSampleRendering)?
@@ -80,11 +81,13 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
     init(
         mediaSessionBuilder: any DASHMediaSessionBuilding = DefaultDASHMediaSessionBuilder(),
         batchBuilder: any DASHPlaybackBatchBuilding = DASHPlaybackBatchBuilder(),
-        rendererBuilder: any DASHRendererBuilding = DefaultDASHRendererBuilder()
+        rendererBuilder: any DASHRendererBuilding = DefaultDASHRendererBuilder(),
+        fixedRenderer: (any DASHSampleRendering)? = nil
     ) {
         self.mediaSessionBuilder = mediaSessionBuilder
         self.batchBuilder = batchBuilder
         self.rendererBuilder = rendererBuilder
+        self.fixedRenderer = fixedRenderer
     }
 
     func resume(
@@ -101,7 +104,12 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
         do {
             let output = try await session.processPlannedSegments()
             let batch = try batchBuilder.make(output: output, context: context)
-            let renderer = await rendererBuilder.makeRenderer()
+            let renderer: any DASHSampleRendering
+            if let fixedRenderer {
+                renderer = fixedRenderer
+            } else {
+                renderer = await rendererBuilder.makeRenderer()
+            }
 
             for sampleBuffer in batch.video {
                 try await renderer.enqueueVideo(sampleBuffer)
