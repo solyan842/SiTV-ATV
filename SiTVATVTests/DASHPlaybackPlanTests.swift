@@ -34,6 +34,63 @@ final class DASHPlaybackPlanTests: XCTestCase {
         )
     }
 
+    func testDynamicManifestStartsAtLatestTimelineWindow() throws {
+        let representation = makeRepresentation(
+            id: "live-video",
+            bandwidth: 4_000_000,
+            width: 1920,
+            height: 1080,
+            base: "live/",
+            template: DASHSegmentTemplate(
+                initialization: "init-$RepresentationID$.mp4",
+                media: "$RepresentationID$-$Number$-$Time$.m4s",
+                timescale: 1_000,
+                duration: nil,
+                startNumber: 1,
+                presentationTimeOffset: 0,
+                timeline: [
+                    DASHSegmentTimelineEntry(
+                        startTime: 0,
+                        duration: 2_000,
+                        repeatCount: 5
+                    )
+                ]
+            )
+        )
+        let manifest = DASHManifest(
+            type: .dynamic,
+            minimumUpdatePeriod: 2,
+            baseURL: URL(string: "https://example.com/")!,
+            periods: [
+                DASHPeriod(
+                    id: "live",
+                    baseURL: URL(string: "https://example.com/")!,
+                    adaptationSets: [
+                        DASHAdaptationSet(
+                            id: "video",
+                            mimeType: "video/mp4",
+                            contentType: "video",
+                            codecs: "avc1.640028",
+                            language: nil,
+                            baseURL: URL(string: "https://example.com/live/")!,
+                            segmentTemplate: nil,
+                            contentProtections: [],
+                            representations: [representation]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let plan = try DASHPlaybackPlanner().makePlan(
+            from: manifest,
+            segmentCount: 2
+        )
+
+        XCTAssertEqual(plan.video?.mediaSegments.map(\.number), [5, 6])
+        XCTAssertEqual(plan.video?.mediaSegments.map(\.time), [8_000, 10_000])
+    }
+
     func testHeightLimitSelects720p() throws {
         let manifest = DASHManifest(
             type: .static,
@@ -118,7 +175,8 @@ final class DASHPlaybackPlanTests: XCTestCase {
         width: Int?,
         height: Int?,
         base: String,
-        mimeType: String = "video/mp4"
+        mimeType: String = "video/mp4",
+        template: DASHSegmentTemplate? = nil
     ) -> DASHRepresentation {
         DASHRepresentation(
             id: id,
@@ -128,7 +186,7 @@ final class DASHPlaybackPlanTests: XCTestCase {
             mimeType: mimeType,
             codecs: nil,
             baseURL: URL(string: "https://example.com/\(base)")!,
-            segmentTemplate: DASHSegmentTemplate(
+            segmentTemplate: template ?? DASHSegmentTemplate(
                 initialization: "init-$RepresentationID$.mp4",
                 media: "$RepresentationID$-$Number$.m4s",
                 timescale: 1,
