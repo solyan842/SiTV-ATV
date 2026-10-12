@@ -22,6 +22,28 @@ final class DASHClearKeyMediaSessionTests: XCTestCase {
         XCTAssertEqual(audioProcessCount, 1)
     }
 
+    func testProcessesRefreshedSegmentsOnMatchingPipelines() async throws {
+        let video = MediaSessionPipeline(segments: [])
+        let audio = MediaSessionPipeline(segments: [])
+        let session = DASHClearKeyMediaSession(
+            videoPipeline: video,
+            audioPipeline: audio
+        )
+
+        let output = try await session.process(
+            videoSegments: [makeResolvedSegment(number: 7, path: "v7.m4s")],
+            audioSegments: [
+                makeResolvedSegment(number: 11, path: "a11.m4s"),
+                makeResolvedSegment(number: 12, path: "a12.m4s")
+            ]
+        )
+
+        XCTAssertEqual(output.video.map(\.segmentIndex), [7])
+        XCTAssertEqual(output.audio.map(\.segmentIndex), [11, 12])
+        XCTAssertEqual(await video.refreshedNumbers(), [7])
+        XCTAssertEqual(await audio.refreshedNumbers(), [11, 12])
+    }
+
     func testMissingTrackProducesEmptySide() async throws {
         let audio = MediaSessionPipeline(segments: [makeSegment(index: 4)])
         let session = DASHClearKeyMediaSession(
@@ -76,6 +98,18 @@ final class DASHClearKeyMediaSessionTests: XCTestCase {
             firstSampleIsSyncSample: true
         )
     }
+
+    private func makeResolvedSegment(
+        number: UInt64,
+        path: String
+    ) -> DASHResolvedSegment {
+        DASHResolvedSegment(
+            number: number,
+            time: number * 2_000,
+            duration: 2_000,
+            url: URL(string: "https://example.com/\(path)")!
+        )
+    }
 }
 
 private actor MediaSessionPipeline: DASHClearKeyTrackProcessing {
@@ -83,6 +117,7 @@ private actor MediaSessionPipeline: DASHClearKeyTrackProcessing {
     private let finalizeError: MediaSessionTestError?
     private var processCalls = 0
     private var finalizeCalls = 0
+    private var refreshed: [UInt64] = []
 
     init(
         segments: [ParsedMediaSegment],
@@ -97,6 +132,22 @@ private actor MediaSessionPipeline: DASHClearKeyTrackProcessing {
         return segments
     }
 
+    func process(segment: DASHResolvedSegment) async throws -> ParsedMediaSegment {
+        refreshed.append(segment.number)
+        return ParsedMediaSegment(
+            segmentIndex: Int(segment.number),
+            samples: [],
+            movieFragmentSequenceNumbers: [],
+            baseMediaDecodeTimes: [:],
+            hasSegmentIndex: false,
+            hasProducerReferenceTime: false,
+            eventMessages: [],
+            segmentIndices: [],
+            isChunkedSegment: false,
+            firstSampleIsSyncSample: true
+        )
+    }
+
     func finalize() async throws {
         finalizeCalls += 1
         if let finalizeError {
@@ -106,6 +157,10 @@ private actor MediaSessionPipeline: DASHClearKeyTrackProcessing {
 
     func processCount() -> Int {
         processCalls
+    }
+
+    func refreshedNumbers() -> [UInt64] {
+        refreshed
     }
 
     func finalizeCount() -> Int {
