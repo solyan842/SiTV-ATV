@@ -27,11 +27,22 @@ jobs:
       - name: Build and test
         run: |
           set -o pipefail
-          DESTINATION=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*\(Apple TV[^()]*(.*)\) (\([0-9A-F-]*\)) (Shutdown)$/\2/p' | head -n 1)
+          DESTINATION=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data.get("devices", {}).items():
+              if "tvOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("Apple TV"):
+                      print(device.get("udid", ""))
+                      raise SystemExit
+          ')
           if [ -z "$DESTINATION" ]; then
             echo "No available Apple TV simulator found"
             exit 1
           fi
+          echo "Using tvOS simulator: $DESTINATION"
           xcodebuild \
             -project SiTVATV.xcodeproj \
             -scheme SiTVATV \
