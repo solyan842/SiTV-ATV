@@ -16,8 +16,10 @@ final class DASHClearKeyMediaSessionTests: XCTestCase {
         XCTAssertEqual(output.video.map(\.segmentIndex), [1])
         XCTAssertEqual(output.audio.map(\.segmentIndex), [2, 3])
         XCTAssertFalse(output.isEmpty)
-        XCTAssertEqual(await video.processCount(), 1)
-        XCTAssertEqual(await audio.processCount(), 1)
+        let videoProcessCount = await video.processCount()
+        let audioProcessCount = await audio.processCount()
+        XCTAssertEqual(videoProcessCount, 1)
+        XCTAssertEqual(audioProcessCount, 1)
     }
 
     func testMissingTrackProducesEmptySide() async throws {
@@ -54,8 +56,10 @@ final class DASHClearKeyMediaSessionTests: XCTestCase {
             XCTAssertEqual(error as? MediaSessionTestError, .videoFinalize)
         }
 
-        XCTAssertEqual(await video.finalizeCount(), 1)
-        XCTAssertEqual(await audio.finalizeCount(), 1)
+        let videoFinalizeCount = await video.finalizeCount()
+        let audioFinalizeCount = await audio.finalizeCount()
+        XCTAssertEqual(videoFinalizeCount, 1)
+        XCTAssertEqual(audioFinalizeCount, 1)
     }
 
     private func makeSegment(index: Int) -> ParsedMediaSegment {
