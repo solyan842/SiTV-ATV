@@ -41,6 +41,8 @@ extension DASHPlaybackBatchBuilder: DASHPlaybackBatchBuilding {}
 protocol DASHSampleRendering: AnyObject {
     func start(at sourceTime: CMTime)
     func pause()
+    func primeVideo(_ sampleBuffer: CMSampleBuffer)
+    func primeAudio(_ sampleBuffer: CMSampleBuffer)
     func enqueueVideo(_ sampleBuffer: CMSampleBuffer) async throws
     func enqueueAudio(_ sampleBuffer: CMSampleBuffer) async throws
     func flush() async
@@ -66,6 +68,18 @@ protocol DASHPlaybackControlling: AnyObject {
         headers: [String: String]
     ) async throws
     func stop() async
+}
+
+private enum DASHQueuedPlaybackSample {
+    case video(CMSampleBuffer)
+    case audio(CMSampleBuffer)
+
+    var presentationTime: CMTime {
+        switch self {
+        case .video(let sampleBuffer), .audio(let sampleBuffer):
+            return CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        }
+    }
 }
 
 actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
@@ -122,31 +136,45 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
             pendingRenderer = renderer
             try ensureCurrent(generation)
 
-            for sampleBuffer in batch.video {
-                try ensureCurrent(generation)
-                try await renderer.enqueueVideo(sampleBuffer)
+            if let firstVideo = batch.video.first {
+                await renderer.primeVideo(firstVideo)
                 try ensureCurrent(generation)
             }
-            for sampleBuffer in batch.audio {
-                try ensureCurrent(generation)
-                try await renderer.enqueueAudio(sampleBuffer)
+            if let firstAudio = batch.audio.first {
+                await renderer.primeAudio(firstAudio)
                 try ensureCurrent(generation)
             }
 
-            try ensureCurrent(generation)
             await renderer.start(at: batch.sourceTime)
             try ensureCurrent(generation)
+
+            let remainingSamples = orderedRemainingSamples(in: batch)
+            for sample in remainingSamples {
+                try ensureCurrent(generation)
+                switch sample {
+                case .video(let sampleBuffer):
+                    try await renderer.enqueueVideo(sampleBuffer)
+                case .audio(let sampleBuffer):
+                    try await renderer.enqueueAudio(sampleBuffer)
+                }
+                try ensureCurrent(generation)
+            }
 
             mediaSession = session
             self.renderer = renderer
             pendingRenderer = nil
             isPlaying = true
         } catch {
-            if let pendingRenderer {
+            let staleGeneration = generation != playbackGeneration
+            if let pendingRenderer,
+               !staleGeneration || fixedRenderer == nil {
                 await pendingRenderer.pause()
                 await pendingRenderer.flush()
             }
             try? await session.finalize()
+            if staleGeneration {
+                throw PlayerEngineError.stopped
+            }
             throw error
         }
     }
@@ -164,6 +192,16 @@ actor DASHClearKeyPlaybackController: DASHPlaybackControlling {
         renderer = nil
         mediaSession = nil
         isPlaying = false
+    }
+
+    private func orderedRemainingSamples(
+        in batch: DASHPlaybackBatch
+    ) -> [DASHQueuedPlaybackSample] {
+        let video = batch.video.dropFirst().map(DASHQueuedPlaybackSample.video)
+        let audio = batch.audio.dropFirst().map(DASHQueuedPlaybackSample.audio)
+        return (video + audio).sorted { lhs, rhs in
+            CMTimeCompare(lhs.presentationTime, rhs.presentationTime) < 0
+        }
     }
 
     private func ensureCurrent(_ generation: UInt64) throws {
