@@ -3,6 +3,7 @@ import Foundation
 enum DASHPlaybackPlannerError: Error, Equatable {
     case missingPeriod
     case noPlayableRepresentations
+    case missingPreservedRepresentation(String)
 }
 
 struct DASHTrackPlan: Sendable, Equatable {
@@ -45,9 +46,7 @@ struct DASHPlaybackPlanner {
             .filter { isAudio($0) }
             .flatMap(\.representations)
 
-        let selection: DASHSegmentSelection = manifest.type == .dynamic
-            ? .latest
-            : .earliest
+        let selection = segmentSelection(for: manifest)
 
         let video = try selectBest(videoCandidates).map {
             try makeTrackPlan(
@@ -71,6 +70,55 @@ struct DASHPlaybackPlanner {
         return plan
     }
 
+    func refreshPlan(
+        from manifest: DASHManifest,
+        preserving current: DASHPlaybackPlan,
+        segmentCount: Int = 6
+    ) throws -> DASHPlaybackPlan {
+        guard let period = manifest.periods.first else {
+            throw DASHPlaybackPlannerError.missingPeriod
+        }
+
+        let selection = segmentSelection(for: manifest)
+        let video = try refreshedTrackPlan(
+            current.video,
+            adaptations: period.adaptationSets.filter { isVideo($0) },
+            segmentCount: segmentCount,
+            selection: selection
+        )
+        let audio = try refreshedTrackPlan(
+            current.audio,
+            adaptations: period.adaptationSets.filter { isAudio($0) },
+            segmentCount: segmentCount,
+            selection: selection
+        )
+
+        let plan = DASHPlaybackPlan(video: video, audio: audio)
+        guard !plan.isEmpty else {
+            throw DASHPlaybackPlannerError.noPlayableRepresentations
+        }
+        return plan
+    }
+
+    private func refreshedTrackPlan(
+        _ current: DASHTrackPlan?,
+        adaptations: [DASHAdaptationSet],
+        segmentCount: Int,
+        selection: DASHSegmentSelection
+    ) throws -> DASHTrackPlan? {
+        guard let current else { return nil }
+        let representationID = current.representation.id
+        let candidates = adaptations.flatMap(\.representations)
+        guard let representation = candidates.first(where: { $0.id == representationID }) else {
+            throw DASHPlaybackPlannerError.missingPreservedRepresentation(representationID)
+        }
+        return try makeTrackPlan(
+            representation: representation,
+            segmentCount: segmentCount,
+            selection: selection
+        )
+    }
+
     private func makeTrackPlan(
         representation: DASHRepresentation,
         segmentCount: Int,
@@ -85,6 +133,10 @@ struct DASHPlaybackPlanner {
                 selection: selection
             )
         )
+    }
+
+    private func segmentSelection(for manifest: DASHManifest) -> DASHSegmentSelection {
+        manifest.type == .dynamic ? .latest : .earliest
     }
 
     private func selectBest(_ representations: [DASHRepresentation]) -> DASHRepresentation? {
