@@ -65,7 +65,33 @@ struct DASHSampleBufferBuilder {
         guard status == noErr, let sampleBuffer else {
             throw DASHSampleBufferBuilderError.sampleBuffer(status)
         }
+
+        applySampleFlags(sample.flags, to: sampleBuffer)
         return sampleBuffer
+    }
+
+    private func applySampleFlags(
+        _ flags: SampleFlags,
+        to sampleBuffer: CMSampleBuffer
+    ) {
+        guard !flags.isSyncSample,
+              let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                  sampleBuffer,
+                  createIfNecessary: true
+              ),
+              CFArrayGetCount(attachments) > 0 else {
+            return
+        }
+
+        let dictionary = unsafeBitCast(
+            CFArrayGetValueAtIndex(attachments, 0),
+            to: CFMutableDictionary.self
+        )
+        CFDictionarySetValue(
+            dictionary,
+            Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(),
+            Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+        )
     }
 
     private func makeBlockBuffer(from data: Data) throws -> CMBlockBuffer {
