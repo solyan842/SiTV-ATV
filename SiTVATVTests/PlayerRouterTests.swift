@@ -33,6 +33,15 @@ final class PlayerRouterTests: XCTestCase {
         XCTAssertTrue(router.engines(for: source).isEmpty)
     }
 
+    func testFairPlayStaysClosedUntilContentKeyHandlerExists() {
+        let source = StreamSource(
+            url: "https://example.com/live.m3u8",
+            manifestType: "hls",
+            drmType: "com.apple.fps"
+        )
+        XCTAssertTrue(router.engines(for: source).isEmpty)
+    }
+
     func testAttemptsPreserveSourceOrder() {
         let channel = Channel(
             id: "demo",
