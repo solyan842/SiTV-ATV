@@ -2,7 +2,9 @@ import Foundation
 
 struct M3UParser: Sendable {
     func parse(_ text: String) -> [Channel] {
-        let lines = text.split(whereSeparator: \ .isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let lines = text.split(whereSeparator: \.isNewline).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard lines.contains(where: { $0.uppercased().hasPrefix("#EXTM3U") }) else { return [] }
 
         var channels: [Channel] = []
@@ -132,7 +134,9 @@ struct M3UParser: Sendable {
     }
 
     private func parseQuotedAttributes(_ line: String) -> [String: String] {
-        guard let regex = try? NSRegularExpression(pattern: #"([A-Za-z0-9_-]+)=\"([^\"]*)\""#) else { return [:] }
+        guard let regex = try? NSRegularExpression(pattern: "([A-Za-z0-9_-]+)=\\\"([^\\\"]*)\\\"") else {
+            return [:]
+        }
         let ns = line as NSString
         let range = NSRange(location: 0, length: ns.length)
         var result: [String: String] = [:]
