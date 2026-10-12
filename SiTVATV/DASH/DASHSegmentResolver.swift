@@ -10,6 +10,11 @@ enum DASHSegmentResolverError: Error, Equatable {
     case invalidTemplateToken(String)
 }
 
+enum DASHSegmentSelection: Sendable, Equatable {
+    case earliest
+    case latest
+}
+
 struct DASHResolvedSegment: Sendable, Equatable {
     let number: UInt64
     let time: UInt64?
@@ -37,7 +42,8 @@ struct DASHSegmentResolver {
 
     func mediaSegments(
         for representation: DASHRepresentation,
-        maxCount: Int
+        maxCount: Int,
+        selection: DASHSegmentSelection = .earliest
     ) throws -> [DASHResolvedSegment] {
         guard maxCount > 0 else { return [] }
         guard let template = representation.segmentTemplate else {
@@ -52,7 +58,8 @@ struct DASHSegmentResolver {
                 template: template,
                 media: media,
                 representation: representation,
-                maxCount: maxCount
+                maxCount: maxCount,
+                selection: selection
             )
         }
 
@@ -60,6 +67,10 @@ struct DASHSegmentResolver {
             return []
         }
 
+        // A duration-only dynamic template needs availability timing (for example
+        // availabilityStartTime/publishTime) to derive the real live edge. Until
+        // that timing is modeled, keep deterministic startNumber behavior rather
+        // than pretending that the first generated window is the current live edge.
         return try (0..<maxCount).map { offset in
             let number = template.startNumber + UInt64(offset)
             let time = UInt64(offset) * duration
@@ -82,7 +93,8 @@ struct DASHSegmentResolver {
         template: DASHSegmentTemplate,
         media: String,
         representation: DASHRepresentation,
-        maxCount: Int
+        maxCount: Int,
+        selection: DASHSegmentSelection
     ) throws -> [DASHResolvedSegment] {
         var result: [DASHResolvedSegment] = []
         var nextTime: UInt64 = 0
@@ -97,21 +109,32 @@ struct DASHSegmentResolver {
             let repetitions = entry.repeatCount + 1
 
             for _ in 0..<repetitions {
-                guard result.count < maxCount else { return result }
                 let path = try render(
                     media,
                     representation: representation,
                     number: number,
                     time: currentTime
                 )
-                result.append(
-                    DASHResolvedSegment(
-                        number: number,
-                        time: currentTime,
-                        duration: entry.duration,
-                        url: try resolve(path, against: representation.baseURL)
-                    )
+                let segment = DASHResolvedSegment(
+                    number: number,
+                    time: currentTime,
+                    duration: entry.duration,
+                    url: try resolve(path, against: representation.baseURL)
                 )
+
+                switch selection {
+                case .earliest:
+                    result.append(segment)
+                    if result.count == maxCount {
+                        return result
+                    }
+                case .latest:
+                    result.append(segment)
+                    if result.count > maxCount {
+                        result.removeFirst(result.count - maxCount)
+                    }
+                }
+
                 currentTime += entry.duration
                 number += 1
             }
