@@ -35,6 +35,41 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         XCTAssertTrue(finalized)
     }
 
+    func testProcessesRefreshedSegmentOutsideInitialPlan() async throws {
+        let plannedURL = URL(string: "https://example.com/seg-1.m4s")!
+        let refreshedURL = URL(string: "https://example.com/seg-7.m4s")!
+        let headers = ["User-Agent": "SiTV"]
+        let loader = TrackPipelineLoader(
+            payloads: [
+                plannedURL: Data([0x01]),
+                refreshedURL: Data([0x07])
+            ]
+        )
+        let processor = TrackPipelineProcessor()
+        let pipeline = DASHClearKeyTrackPipeline(
+            plan: makePlan(urls: [plannedURL]),
+            headers: headers,
+            loader: loader,
+            processor: processor
+        )
+        let refreshedSegment = DASHResolvedSegment(
+            number: 7,
+            time: 18_000,
+            duration: 3_000,
+            url: refreshedURL
+        )
+
+        let result = try await pipeline.process(segment: refreshedSegment)
+
+        XCTAssertEqual(result.segmentIndex, 0)
+        let payloads = await processor.payloads()
+        XCTAssertEqual(payloads, [Data([0x07])])
+        let requests = await loader.requests()
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.url, refreshedURL)
+        XCTAssertEqual(requests.first?.headers, headers)
+    }
+
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
         let url = URL(string: "https://example.com/seg-1.m4s")!
         let loader = TrackPipelineLoader(payloads: [url: Data([0x01])])
