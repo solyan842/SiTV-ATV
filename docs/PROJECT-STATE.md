@@ -6,28 +6,31 @@ Updated: 2026-10-13
 
 - Current feature branch: `dev/favorites`
 - Base playback branch: `dev/dash-engine`
-- `dev/favorites` includes the current DASH engine line plus Favorites, coordinator fallback tests and HTTP/ATS parity work.
+- `dev/favorites` includes the current DASH engine line plus Favorites, coordinator fallback tests, HTTP/ATS parity work and final tvOS brand assets.
 - `main` remains protected from experimental development work unless explicitly requested.
 
 ## Verified automated checkpoint
 
 Latest verified repository-wide CI checkpoint at this update:
 
-- Workflow run: `#184`
-- Run ID: `38361464298`
+- Workflow run: `#185`
+- Run ID: `38364127384`
 - Branch: `dev/favorites`
-- Commit: `627d60afbd3e0634f9b4ecf1ebb5e82e9533051d`
+- Commit: `4df8c5151a921068d4246acbbd9e993219cb888c`
 - Result: tvOS `build-test` SUCCESS
 - Simulator test suite: SUCCESS
 - Unsigned generic tvOS device build: SUCCESS
-- Unsigned device artifact: `sitv-atv-unsigned-38361464298-1`
-- Artifact ID: `11794524846`
-- Artifact size: 22,615,153 bytes
+- Unsigned device artifact: `sitv-atv-unsigned-38364127384-1`
+- Artifact ID: `11796550605`
+- Artifact size: 23,006,837 bytes
 - Artifact expiry: 2026-10-27
-- Durable build log artifact: `tvos-build-test-log-38361464298-1`
+- Durable build log artifact: `tvos-build-test-log-38364127384-1`
+- Durable build log artifact ID: `11796790288`
+- Final tvOS asset catalog compiled successfully into the device `.app`; bundle inspection confirms `Assets.car`, `CFBundleIcons -> App Icon`, three-layer home/App Store icon stacks, Top Shelf and Top Shelf Wide assets.
 
 Additional verified checkpoints:
 
+- Workflow run `#184` passed simulator tests, unsigned generic tvOS device build and `.app` artifact packaging before final branding assets were added.
 - Workflow run `#183` passed the unsigned generic tvOS device build before app-bundle artifact packaging was added.
 - Workflow run `#180` passed the dedicated `PlayerCoordinator` fallback tests covering same-source engine fallback, source 1 → source 2 fallback, stop-before-switch and unsupported routing.
 
@@ -86,6 +89,8 @@ Authorized-stream path only.
 - `Yêu thích` virtual group in the sidebar.
 - Per-channel star toggle.
 - Favorites state restored at bootstrap.
+- Final SiTV tvOS branding assets ported from the existing Android SiTV vector artwork.
+- Three-layer parallax AppIcon, App Store icon, Top Shelf and Top Shelf Wide assets are compiled into `Assets.car`.
 
 ### CI / agent rules
 
@@ -115,9 +120,8 @@ Priority order:
 5. Verify source fallback by intentionally failing source 1 and confirming source 2 is selected.
 6. Verify a legitimate HTTP playlist/stream on-device to confirm ATS parity in the real app bundle.
 7. Verify Siri Remote focus movement, return-from-player focus behavior and Favorites star interaction on-device.
-8. Add the final tvOS AppIcon/brand asset from the existing SiTV artwork before public/TestFlight distribution.
-9. Review and satisfy VLCKit LGPL distribution obligations before public/TestFlight distribution.
-10. Only after device evidence, fix device-specific playback/focus issues with minimal patches.
+8. Review and satisfy VLCKit LGPL distribution obligations before public/TestFlight distribution.
+9. Only after device evidence, fix device-specific playback/focus issues with minimal patches.
 
 Detailed device procedure: `docs/DEVICE-SMOKE-TEST.md`.
 
