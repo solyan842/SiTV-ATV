@@ -6,18 +6,25 @@ Updated: 2026-10-13
 
 - Current feature branch: `dev/favorites`
 - Base playback branch: `dev/dash-engine`
-- `dev/favorites` is based on the latest DASH engine line and must not lose those playback changes.
+- `dev/favorites` includes the current DASH engine line plus Favorites, coordinator fallback tests and HTTP/ATS parity work.
 - `main` remains protected from experimental development work unless explicitly requested.
 
 ## Verified automated checkpoint
 
-Latest verified feature checkpoint before this document update:
+Latest verified repository-wide CI checkpoint at this update:
 
-- Workflow run: `#174`
+- Workflow run: `#182`
+- Run ID: `38326701144`
 - Branch: `dev/favorites`
-- Commit: `7d7acfb26a3c066aee662affbca557c5c9f17941`
+- Commit: `e2424926d4aab651f2132a030ef01bd3060980cf`
 - Result: tvOS `build-test` SUCCESS
-- Durable CI logging is enabled; failed-run diagnosis must follow `AGENTS.md` and `docs/GITHUB-ACTIONS-LOGGING-POLICY.md`.
+- XcodeGen generation, ATS Info.plist configuration and the full tvOS test suite all passed.
+
+Additional verified checkpoint:
+
+- Workflow run `#180` passed the dedicated `PlayerCoordinator` fallback tests covering same-source engine fallback, source 1 → source 2 fallback, stop-before-switch and unsupported routing.
+
+Durable CI logging is enabled; failed-run diagnosis must follow `AGENTS.md` and `docs/GITHUB-ACTIONS-LOGGING-POLICY.md`.
 
 Do not assume this remains the latest run. Before every CI diagnosis, refresh workflow runs repository-wide with no branch filter and follow `AGENTS.md`.
 
@@ -31,14 +38,17 @@ Do not assume this remains the latest run. Before every CI diagnosis, refresh wo
 - Multiple stream sources per channel.
 - Source headers, manifest type, DRM metadata and license metadata parsing.
 - Playlist cache and cache invalidation when source URL changes.
+- HTTP and HTTPS playlist/stream compatibility retained to match Android SiTV cleartext behavior; ATS configuration is explicit in the tvOS project.
 
 ### Player routing
 
 - `PlayerRouter` chooses an engine per stream source.
 - Channel source fallback is preserved by `PlayerCoordinator`.
+- Same-source engine fallback and cross-source fallback are covered by unit tests.
 - AVPlayer is used for native-compatible playback paths.
 - VLCKit is available as non-DRM fallback where supported.
 - Widevine/FairPlay are not falsely advertised as supported.
+- Playback failures expose useful localized messages instead of raw enum descriptions.
 
 ### DASH / ClearKey
 
@@ -62,7 +72,7 @@ Authorized-stream path only.
 
 - Channel groups and channel grid.
 - Source settings UI.
-- Full-screen playback UI.
+- Full-screen playback UI with engine/source overlay.
 - Persistent Favorites store.
 - `Yêu thích` virtual group in the sidebar.
 - Per-channel star toggle.
@@ -72,9 +82,16 @@ Authorized-stream path only.
 
 - tvOS XcodeGen build/test workflow.
 - Durable `xcodebuild` log artifact uploaded with `if: always()`.
+- Docs-only changes under `README.md`, `AGENTS.md` and `docs/**` do not create unnecessary CI runs.
 - `AGENTS.md` is mandatory before diagnosis or writes.
 - Raw job log may be attempted once only; artifact fallback is mandatory if raw log is unusable.
 - Latest workflow run must always be discovered repo-wide before CI diagnosis.
+
+### Dependency / release hygiene
+
+- `swift-cmaf-kit` `0.1.2` is recorded as Apache-2.0.
+- VLCKit pinned revision is recorded as LGPL-2.1 and requires a distribution-compliance review before TestFlight/App Store/public binary distribution.
+- See `docs/THIRD-PARTY-NOTICES.md`.
 
 ## Remaining validation / next work
 
@@ -85,8 +102,13 @@ Priority order:
 3. Real Apple TV smoke test of an authorized DASH/MPD + ClearKey channel.
 4. Verify long-running live DASH behavior across manifest refresh and period rollover.
 5. Verify source fallback by intentionally failing source 1 and confirming source 2 is selected.
-6. Verify Siri Remote focus movement, return-from-player focus behavior and Favorites star interaction on-device.
-7. Only after device evidence, fix device-specific playback/focus issues with minimal patches.
+6. Verify a legitimate HTTP playlist/stream on-device to confirm ATS parity in the real app bundle.
+7. Verify Siri Remote focus movement, return-from-player focus behavior and Favorites star interaction on-device.
+8. Add the final tvOS AppIcon/brand asset from the existing SiTV artwork before public/TestFlight distribution.
+9. Review and satisfy VLCKit LGPL distribution obligations before public/TestFlight distribution.
+10. Only after device evidence, fix device-specific playback/focus issues with minimal patches.
+
+Detailed device procedure: `docs/DEVICE-SMOKE-TEST.md`.
 
 ## Scope locks
 
