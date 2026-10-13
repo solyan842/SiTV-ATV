@@ -108,18 +108,25 @@ jobs:
 
       - name: Check signed IPA inputs
         id: signing
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           TVOS_CERT_P12_BASE64: ${{ secrets.TVOS_CERT_P12_BASE64 }}
           TVOS_CERT_PASSWORD: ${{ secrets.TVOS_CERT_PASSWORD }}
           TVOS_PROVISION_PROFILE_BASE64: ${{ secrets.TVOS_PROVISION_PROFILE_BASE64 }}
         run: |
-          if [ -n "$TVOS_CERT_P12_BASE64" ] && [ -n "$TVOS_CERT_PASSWORD" ] && [ -n "$TVOS_PROVISION_PROFILE_BASE64" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "Signed IPA skipped: configure TVOS_CERT_P12_BASE64, TVOS_CERT_PASSWORD and TVOS_PROVISION_PROFILE_BASE64." | tee -a ci-logs/tvos-build-test.log
+          missing=()
+          [ -n "$TVOS_CERT_P12_BASE64" ] || missing+=(TVOS_CERT_P12_BASE64)
+          [ -n "$TVOS_CERT_PASSWORD" ] || missing+=(TVOS_CERT_PASSWORD)
+          [ -n "$TVOS_PROVISION_PROFILE_BASE64" ] || missing+=(TVOS_PROVISION_PROFILE_BASE64)
+
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Signed tvOS IPA is required for device testing; missing secrets: ${missing[*]}" | tee -a ci-logs/tvos-build-test.log
+            echo "::error::Signed tvOS IPA required; configure missing repository secrets: ${missing[*]}"
+            exit 1
           fi
+
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Install signing certificate and provisioning profile
         if: steps.signing.outputs.available == 'true'
