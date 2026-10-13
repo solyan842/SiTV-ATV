@@ -68,6 +68,21 @@ jobs:
             test 2>&1 | tee -a "$LOG_FILE"
           exit ${PIPESTATUS[0]}
 
+      - name: Build generic tvOS device
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          LOG_FILE="ci-logs/tvos-build-test.log"
+          echo "Building unsigned generic tvOS device target" | tee -a "$LOG_FILE"
+          xcodebuild \
+            -project SiTVATV.xcodeproj \
+            -scheme SiTVATV \
+            -destination "generic/platform=tvOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee -a "$LOG_FILE"
+          exit ${PIPESTATUS[0]}
+
       - name: Upload durable build log
         if: always()
         uses: actions/upload-artifact@v4
