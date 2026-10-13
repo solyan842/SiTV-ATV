@@ -72,16 +72,38 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p ci-logs
+          mkdir -p ci-logs ci-artifacts
           LOG_FILE="ci-logs/tvos-build-test.log"
           echo "Building unsigned generic tvOS device target" | tee -a "$LOG_FILE"
           xcodebuild \
             -project SiTVATV.xcodeproj \
             -scheme SiTVATV \
+            -configuration Debug \
             -destination "generic/platform=tvOS" \
+            -derivedDataPath ci-build \
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee -a "$LOG_FILE"
-          exit ${PIPESTATUS[0]}
+          BUILD_STATUS=${PIPESTATUS[0]}
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            exit "$BUILD_STATUS"
+          fi
+
+          APP_PATH=$(find ci-build/Build/Products/Debug-appletvos -maxdepth 1 -type d -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "Generic tvOS build succeeded but no .app bundle was found" | tee -a "$LOG_FILE"
+            exit 1
+          fi
+
+          echo "Packaging unsigned app bundle: $APP_PATH" | tee -a "$LOG_FILE"
+          ditto -c -k --keepParent "$APP_PATH" "ci-artifacts/SiTVATV-unsigned-${GITHUB_SHA}.zip"
+
+      - name: Upload unsigned tvOS app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitv-atv-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/SiTVATV-unsigned-*.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload durable build log
         if: always()
