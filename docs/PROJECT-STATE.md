@@ -13,16 +13,25 @@ Updated: 2026-10-13
 
 Latest verified repository-wide CI checkpoint at this update:
 
-- Workflow run: `#182`
-- Run ID: `38326701144`
+- Workflow run: `#184`
+- Run ID: `38361464298`
 - Branch: `dev/favorites`
-- Commit: `e2424926d4aab651f2132a030ef01bd3060980cf`
+- Commit: `627d60afbd3e0634f9b4ecf1ebb5e82e9533051d`
 - Result: tvOS `build-test` SUCCESS
-- XcodeGen generation, ATS Info.plist configuration and the full tvOS test suite all passed.
+- Simulator test suite: SUCCESS
+- Unsigned generic tvOS device build: SUCCESS
+- Unsigned device artifact: `sitv-atv-unsigned-38361464298-1`
+- Artifact ID: `11794524846`
+- Artifact size: 22,615,153 bytes
+- Artifact expiry: 2026-10-27
+- Durable build log artifact: `tvos-build-test-log-38361464298-1`
 
-Additional verified checkpoint:
+Additional verified checkpoints:
 
+- Workflow run `#183` passed the unsigned generic tvOS device build before app-bundle artifact packaging was added.
 - Workflow run `#180` passed the dedicated `PlayerCoordinator` fallback tests covering same-source engine fallback, source 1 → source 2 fallback, stop-before-switch and unsupported routing.
+
+The unsigned `.app` artifact is a CI/device-build checkpoint, not a signed installable App Store/TestFlight package. Real Apple TV installation still requires normal Apple code signing.
 
 Durable CI logging is enabled; failed-run diagnosis must follow `AGENTS.md` and `docs/GITHUB-ACTIONS-LOGGING-POLICY.md`.
 
@@ -82,6 +91,8 @@ Authorized-stream path only.
 
 - tvOS XcodeGen build/test workflow.
 - Durable `xcodebuild` log artifact uploaded with `if: always()`.
+- Unsigned generic tvOS device build is compiled on every CI run.
+- Unsigned `.app` bundle is packaged and uploaded as a dedicated CI artifact on successful device builds.
 - Docs-only changes under `README.md`, `AGENTS.md` and `docs/**` do not create unnecessary CI runs.
 - `AGENTS.md` is mandatory before diagnosis or writes.
 - Raw job log may be attempted once only; artifact fallback is mandatory if raw log is unusable.
