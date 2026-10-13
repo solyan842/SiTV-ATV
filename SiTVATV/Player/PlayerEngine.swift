@@ -25,6 +25,22 @@ enum PlayerEngineError: Error, Equatable, Sendable {
     case stopped
 }
 
+extension PlayerEngineError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .unsupported:
+            return "Luồng này chưa được SiTV hỗ trợ trên Apple TV."
+        case let .failedToStart(reason):
+            let detail = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            return detail.isEmpty
+                ? "Không thể bắt đầu phát kênh."
+                : "Không thể bắt đầu phát kênh: \(detail)"
+        case .stopped:
+            return "Phát kênh đã dừng."
+        }
+    }
+}
+
 protocol PlayerEngine: AnyObject {
     var kind: PlayerEngineKind { get }
     func canPlay(_ source: StreamSource) -> Bool
