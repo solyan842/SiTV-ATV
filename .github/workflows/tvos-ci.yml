@@ -14,6 +14,7 @@ on:
       - README.md
       - AGENTS.md
       - docs/**
+  workflow_dispatch:
 
 concurrency:
   group: tvos-ci-${{ github.workflow }}-${{ github.ref }}
@@ -102,6 +103,151 @@ jobs:
         with:
           name: sitv-atv-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
           path: ci-artifacts/SiTVATV-unsigned-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check signed IPA inputs
+        id: signing
+        shell: bash
+        env:
+          TVOS_CERT_P12_BASE64: ${{ secrets.TVOS_CERT_P12_BASE64 }}
+          TVOS_CERT_PASSWORD: ${{ secrets.TVOS_CERT_PASSWORD }}
+          TVOS_PROVISION_PROFILE_BASE64: ${{ secrets.TVOS_PROVISION_PROFILE_BASE64 }}
+        run: |
+          if [ -n "$TVOS_CERT_P12_BASE64" ] && [ -n "$TVOS_CERT_PASSWORD" ] && [ -n "$TVOS_PROVISION_PROFILE_BASE64" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Signed IPA skipped: configure TVOS_CERT_P12_BASE64, TVOS_CERT_PASSWORD and TVOS_PROVISION_PROFILE_BASE64." | tee -a ci-logs/tvos-build-test.log
+          fi
+
+      - name: Install signing certificate and provisioning profile
+        if: steps.signing.outputs.available == 'true'
+        id: install-signing
+        shell: bash
+        env:
+          TVOS_CERT_P12_BASE64: ${{ secrets.TVOS_CERT_P12_BASE64 }}
+          TVOS_CERT_PASSWORD: ${{ secrets.TVOS_CERT_PASSWORD }}
+          TVOS_PROVISION_PROFILE_BASE64: ${{ secrets.TVOS_PROVISION_PROFILE_BASE64 }}
+          TVOS_TEAM_ID: ${{ secrets.TVOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          SIGN_DIR="$RUNNER_TEMP/sitv-signing"
+          CERT_PATH="$SIGN_DIR/tvos-signing.p12"
+          PROFILE_PATH="$SIGN_DIR/tvos.mobileprovision"
+          PROFILE_PLIST="$SIGN_DIR/profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/sitv-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          mkdir -p "$SIGN_DIR" "$HOME/Library/MobileDevice/Provisioning Profiles" ci-artifacts
+
+          printf '%s' "$TVOS_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$TVOS_PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$TVOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")
+          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")
+          TEAM_ID="${TVOS_TEAM_ID:-$PROFILE_TEAM_ID}"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          if /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' "$PROFILE_PLIST" >/dev/null 2>&1; then
+            GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$PROFILE_PLIST" 2>/dev/null || echo false)
+            if [ "$GET_TASK_ALLOW" = "true" ]; then
+              EXPORT_METHOD="development"
+            else
+              EXPORT_METHOD="ad-hoc"
+            fi
+          else
+            EXPORT_METHOD="app-store"
+          fi
+
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
+          echo "export_method=$EXPORT_METHOD" >> "$GITHUB_OUTPUT"
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Archive signed tvOS app
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.install-signing.outputs.profile_name }}
+          TEAM_ID: ${{ steps.install-signing.outputs.team_id }}
+          KEYCHAIN_PATH: ${{ steps.install-signing.outputs.keychain_path }}
+        run: |
+          set -o pipefail
+          LOG_FILE="ci-logs/tvos-build-test.log"
+          rm -rf ci-archive
+          xcodebuild \
+            -project SiTVATV.xcodeproj \
+            -scheme SiTVATV \
+            -configuration Release \
+            -destination "generic/platform=tvOS" \
+            -archivePath ci-archive/SiTVATV.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            archive 2>&1 | tee -a "$LOG_FILE"
+          exit ${PIPESTATUS[0]}
+
+      - name: Export signed tvOS IPA
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.install-signing.outputs.profile_name }}
+          TEAM_ID: ${{ steps.install-signing.outputs.team_id }}
+          EXPORT_METHOD: ${{ steps.install-signing.outputs.export_method }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-signing ci-artifacts/signed
+          cat > ci-signing/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>$EXPORT_METHOD</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.solyan.sitvatv</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath ci-archive/SiTVATV.xcarchive \
+            -exportPath ci-artifacts/signed \
+            -exportOptionsPlist ci-signing/ExportOptions.plist 2>&1 | tee -a ci-logs/tvos-build-test.log
+
+          IPA_PATH=$(find ci-artifacts/signed -maxdepth 1 -type f -name '*.ipa' -print -quit)
+          if [ -z "$IPA_PATH" ]; then
+            echo "Signed export completed but no .ipa was produced" | tee -a ci-logs/tvos-build-test.log
+            exit 1
+          fi
+          mv "$IPA_PATH" "ci-artifacts/SiTVATV-signed-${GITHUB_SHA}.ipa"
+
+      - name: Upload signed tvOS IPA
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitv-atv-signed-ipa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/SiTVATV-signed-*.ipa
           if-no-files-found: error
           retention-days: 14
 
