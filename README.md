@@ -67,10 +67,17 @@ If a source fails, SiTV-ATV tries the next source for that channel.
 - CMAF/CENC inspection and authorized ClearKey sample decryption
 - DASH audio/video sample-buffer rendering and period-rollover re-prepare
 - Channel groups, channel grid and persistent Favorites
+- HTTP/HTTPS IPTV compatibility matching Android SiTV behavior
 - GitHub Actions tvOS build/test with durable failure logs
 
 ## Current validation state
 
 Automated tvOS build/tests are passing on the active development line. Real-device validation is still required for representative HLS, VLC fallback and authorized DASH/ClearKey live streams, plus Siri Remote focus/navigation behavior.
 
-See `docs/PROJECT-STATE.md` for the current working branch, verified checkpoints and next validation steps.
+## Project documents
+
+- `AGENTS.md` — mandatory repository/CI operating rules.
+- `docs/PROJECT-STATE.md` — current verified checkpoint and next work.
+- `docs/DEVICE-SMOKE-TEST.md` — real Apple TV validation checklist.
+- `docs/GITHUB-ACTIONS-LOGGING-POLICY.md` — durable CI-log procedure.
+- `docs/THIRD-PARTY-NOTICES.md` — pinned dependency licenses and release gates.
