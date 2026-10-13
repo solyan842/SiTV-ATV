@@ -3,10 +3,14 @@ import Foundation
 
 @MainActor
 final class AppModel: ObservableObject {
+    private static let allGroupTitle = "Tất cả"
+    private static let favoritesGroupTitle = "Yêu thích"
+
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var sources: [PlaylistSource] = []
     @Published private(set) var activeSource: PlaylistSource = PlaylistSource(slot: 0, name: "", url: "")
-    @Published var selectedGroup: String = "Tất cả"
+    @Published private(set) var favoriteChannelIDs: Set<String> = []
+    @Published var selectedGroup: String = allGroupTitle
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isPlayerPresented = false
@@ -19,10 +23,15 @@ final class AppModel: ObservableObject {
     let dashClearKeyEngine: DASHClearKeyPlayerEngine
 
     private let repository: PlaylistRepository
+    private let favoritesStore: FavoritesStore
     private let coordinator: PlayerCoordinator
 
-    init(repository: PlaylistRepository = PlaylistRepository()) {
+    init(
+        repository: PlaylistRepository = PlaylistRepository(),
+        favoritesStore: FavoritesStore = FavoritesStore()
+    ) {
         self.repository = repository
+        self.favoritesStore = favoritesStore
 
         let avPlayerEngine = AVPlayerEngine()
         let vlcPlayerEngine = VLCPlayerEngine()
@@ -44,19 +53,47 @@ final class AppModel: ObservableObject {
     }
 
     var groups: [String] {
-        let values = Set(channels.map(\.group).filter { !$0.isEmpty })
-        return ["Tất cả"] + values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let reserved = Set([Self.allGroupTitle, Self.favoritesGroupTitle])
+        let values = Set(
+            channels
+                .map(\.group)
+                .filter { !$0.isEmpty && !reserved.contains($0) }
+        )
+        return [Self.allGroupTitle, Self.favoritesGroupTitle]
+            + values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var visibleChannels: [Channel] {
-        guard selectedGroup != "Tất cả" else { return channels }
+        if selectedGroup == Self.allGroupTitle {
+            return channels
+        }
+        if selectedGroup == Self.favoritesGroupTitle {
+            return channels.filter { favoriteChannelIDs.contains($0.id) }
+        }
         return channels.filter { $0.group == selectedGroup }
     }
 
+    var isFavoritesSelected: Bool {
+        selectedGroup == Self.favoritesGroupTitle
+    }
+
+    func isFavorite(_ channel: Channel) -> Bool {
+        favoriteChannelIDs.contains(channel.id)
+    }
+
     func bootstrap() async {
+        await refreshFavorites()
         await refreshSources()
         guard activeSource.isConfigured else { return }
         await loadPlaylist()
+    }
+
+    func refreshFavorites() async {
+        favoriteChannelIDs = await favoritesStore.channelIDs()
+    }
+
+    func toggleFavorite(_ channel: Channel) async {
+        favoriteChannelIDs = await favoritesStore.toggle(channelID: channel.id)
     }
 
     func refreshSources() async {
@@ -75,7 +112,7 @@ final class AppModel: ObservableObject {
             sources = await repository.sources()
             channels = result.channels
             if !groups.contains(selectedGroup) {
-                selectedGroup = "Tất cả"
+                selectedGroup = Self.allGroupTitle
             }
         } catch {
             errorMessage = error.localizedDescription
