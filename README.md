@@ -55,19 +55,22 @@ If a source fails, SiTV-ATV tries the next source for that channel.
 - LGPL dependencies may be used only with their license obligations respected.
 - DRM support is for authorized streams/keys/licenses only.
 
-## Initial implementation order
+## Implemented foundation
 
-1. Project skeleton + models
-2. M3U parser parity with SiTV Android
-3. Playlist repository/cache
-4. PlayerRouter contract
-5. AVPlayer engine
-6. VLCKit fallback
-7. DASH/MPD parser path
-8. ClearKey/CENC smoke test
-9. tvOS channel UI and Siri Remote behavior
-10. Integration and device testing
+- Native tvOS SwiftUI app shell and five playlist source slots
+- M3U parser parity for SiTV stream metadata, headers and multi-source channels
+- Playlist cache and source persistence
+- PlayerRouter with source/engine fallback
+- AVPlayer native playback path
+- VLCKit fallback for supported non-DRM streams
+- DASH/MPD parsing, segment planning and live manifest refresh
+- CMAF/CENC inspection and authorized ClearKey sample decryption
+- DASH audio/video sample-buffer rendering and period-rollover re-prepare
+- Channel groups, channel grid and persistent Favorites
+- GitHub Actions tvOS build/test with durable failure logs
 
-## Status
+## Current validation state
 
-Bootstrap phase.
+Automated tvOS build/tests are passing on the active development line. Real-device validation is still required for representative HLS, VLC fallback and authorized DASH/ClearKey live streams, plus Siri Remote focus/navigation behavior.
+
+See `docs/PROJECT-STATE.md` for the current working branch, verified checkpoints and next validation steps.
