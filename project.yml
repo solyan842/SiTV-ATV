@@ -28,6 +28,12 @@ targets:
         product: CMAFKitDRM
       - package: VLCKit
         product: VLCKit
+    info:
+      path: SiTVATV/Info.plist
+      properties:
+        CFBundleDisplayName: SiTV
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.solyan.sitvatv
