@@ -29,6 +29,43 @@ final class ClearKeyProviderTests: XCTestCase {
         XCTAssertNoThrow(try PlaylistClearKeyProvider().material(for: source))
     }
 
+    func testParsesClearKeyJWKJSON() throws {
+        let kid = Data((0..<16).map(UInt8.init))
+        let key = Data((16..<32).map(UInt8.init))
+        let json = """
+        {"keys":[{"kty":"oct","kid":"\(ClearKeyJWKParser.encodeBase64URL(kid))","k":"\(ClearKeyJWKParser.encodeBase64URL(key))"}],"type":"temporary"}
+        """
+        let source = StreamSource(
+            url: "https://example.com/live.mpd",
+            manifestType: "mpd",
+            drmType: "org.w3.clearkey",
+            drmKey: json
+        )
+
+        let material = try PlaylistClearKeyProvider().material(for: source)
+        XCTAssertEqual(material.keyID, kid)
+        XCTAssertEqual(material.key, key)
+    }
+
+    func testParsesBase64DataURIJWK() throws {
+        let kid = Data((0..<16).map(UInt8.init))
+        let key = Data((16..<32).map(UInt8.init))
+        let json = """
+        {"keys":[{"kty":"oct","kid":"\(ClearKeyJWKParser.encodeBase64URL(kid))","k":"\(ClearKeyJWKParser.encodeBase64URL(key))"}]}
+        """
+        let encoded = Data(json.utf8).base64EncodedString()
+        let source = StreamSource(
+            url: "https://example.com/live.mpd",
+            manifestType: "mpd",
+            drmType: "clearkey",
+            drmKey: "data:application/json;base64,\(encoded)"
+        )
+
+        let material = try PlaylistClearKeyProvider().material(for: source)
+        XCTAssertEqual(material.keyID, kid)
+        XCTAssertEqual(material.key, key)
+    }
+
     func testRejectsMissingKey() {
         let source = StreamSource(url: "https://example.com/live.mpd", manifestType: "mpd", drmType: "clearkey")
         XCTAssertThrowsError(try PlaylistClearKeyProvider().material(for: source)) { error in
