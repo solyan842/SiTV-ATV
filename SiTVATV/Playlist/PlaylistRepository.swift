@@ -44,7 +44,8 @@ actor PlaylistRepository {
         fileManager: FileManager = .default,
         parser: M3UParser = M3UParser(),
         decoder: any PlaylistDecoding = UTF8PlaylistDecoder(),
-        session: URLSession? = nil
+        session: URLSession? = nil,
+        cacheDirectory: URL? = nil
     ) {
         self.defaults = defaults
         self.fileManager = fileManager
@@ -60,10 +61,14 @@ actor PlaylistRepository {
         ]
         self.session = session ?? URLSession(configuration: configuration)
 
-        let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? fileManager.temporaryDirectory
-        self.cacheDirectory = base.appendingPathComponent("SiTV/Playlists", isDirectory: true)
-        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        if let cacheDirectory {
+            self.cacheDirectory = cacheDirectory
+        } else {
+            let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+                ?? fileManager.temporaryDirectory
+            self.cacheDirectory = base.appendingPathComponent("SiTV/Playlists", isDirectory: true)
+        }
+        try? fileManager.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
     }
 
     func sources() -> [PlaylistSource] {
