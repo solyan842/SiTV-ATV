@@ -70,7 +70,7 @@ struct DASHClearKeySession {
         guard let manifestURL = URL(string: source.url) else {
             throw DASHClearKeySessionError.invalidManifestURL
         }
-        guard source.drmType?.lowercased() == "clearkey" else {
+        guard isClearKey(source.drmType) else {
             throw DASHClearKeySessionError.unsupportedDRM
         }
 
@@ -135,5 +135,15 @@ struct DASHClearKeySession {
             initializationData: initData,
             encryption: track
         )
+    }
+
+    private func isClearKey(_ value: String?) -> Bool {
+        let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return normalized == "clearkey"
+            || normalized == "clear_key"
+            || normalized == "org.w3.clearkey"
+            || normalized.contains("clearkey")
     }
 }
