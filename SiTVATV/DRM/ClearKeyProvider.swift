@@ -23,15 +23,43 @@ struct PlaylistClearKeyProvider: ClearKeyProviding {
             throw ClearKeyError.missingKey
         }
 
+        if raw.lowercased().hasPrefix("data:application/json;base64,") {
+            let encoded = String(raw.dropFirst("data:application/json;base64,".count))
+            guard let data = Data(base64Encoded: encoded) else {
+                throw ClearKeyError.invalidFormat
+            }
+            return try ClearKeyJWKParser.materials(from: data).firstValue()
+        }
+
+        if raw.hasPrefix("{") {
+            guard let data = raw.data(using: .utf8) else {
+                throw ClearKeyError.invalidFormat
+            }
+            return try ClearKeyJWKParser.materials(from: data).firstValue()
+        }
+
+        let firstEntry = raw
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+
+        guard let firstEntry else {
+            throw ClearKeyError.invalidFormat
+        }
+
+        return try Self.parseHexPair(firstEntry)
+    }
+
+    private static func parseHexPair(_ raw: String) throws -> ClearKeyMaterial {
         let parts = raw.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else {
             throw ClearKeyError.invalidFormat
         }
 
-        guard let keyID = Self.decodeHex(String(parts[0])), keyID.count == 16 else {
+        guard let keyID = decodeHex(String(parts[0])), keyID.count == 16 else {
             throw ClearKeyError.invalidKeyID
         }
-        guard let key = Self.decodeHex(String(parts[1])), key.count == 16 else {
+        guard let key = decodeHex(String(parts[1])), key.count == 16 else {
             throw ClearKeyError.invalidKey
         }
 
@@ -60,5 +88,62 @@ struct PlaylistClearKeyProvider: ClearKeyProviding {
             index = next
         }
         return data
+    }
+}
+
+enum ClearKeyJWKParser {
+    static func materials(from data: Data) throws -> [ClearKeyMaterial] {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any],
+              let keys = dictionary["keys"] as? [[String: Any]],
+              !keys.isEmpty else {
+            throw ClearKeyError.invalidFormat
+        }
+
+        let materials = try keys.compactMap { item -> ClearKeyMaterial? in
+            guard let kidValue = item["kid"] as? String,
+                  let keyValue = item["k"] as? String else {
+                return nil
+            }
+            guard let keyID = decodeBase64URL(kidValue), keyID.count == 16 else {
+                throw ClearKeyError.invalidKeyID
+            }
+            guard let key = decodeBase64URL(keyValue), key.count == 16 else {
+                throw ClearKeyError.invalidKey
+            }
+            return ClearKeyMaterial(keyID: keyID, key: key)
+        }
+
+        guard !materials.isEmpty else {
+            throw ClearKeyError.invalidFormat
+        }
+        return materials
+    }
+
+    static func encodeBase64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func decodeBase64URL(_ value: String) -> Data? {
+        var normalized = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = normalized.count % 4
+        if remainder != 0 {
+            normalized += String(repeating: "=", count: 4 - remainder)
+        }
+        return Data(base64Encoded: normalized)
+    }
+}
+
+private extension Array where Element == ClearKeyMaterial {
+    func firstValue() throws -> ClearKeyMaterial {
+        guard let first else {
+            throw ClearKeyError.invalidFormat
+        }
+        return first
     }
 }
