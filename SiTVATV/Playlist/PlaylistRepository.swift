@@ -60,7 +60,7 @@ actor PlaylistRepository {
         ]
         self.session = session ?? URLSession(configuration: configuration)
 
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         self.cacheDirectory = base.appendingPathComponent("SiTV/Playlists", isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
@@ -162,6 +162,7 @@ actor PlaylistRepository {
         let source = activeSource()
         guard source.isConfigured else { throw PlaylistRepositoryError.noConfiguredSource }
 
+        try ensureCacheDirectory()
         let cache = cacheFile(slot: source.slot)
         if let cached = try? Data(contentsOf: cache),
            let text = try? decoder.decode(cached) {
@@ -179,6 +180,7 @@ actor PlaylistRepository {
         let channels = parser.parse(text)
         guard !channels.isEmpty else { throw PlaylistRepositoryError.emptyPlaylist }
 
+        try ensureCacheDirectory()
         try fresh.write(to: cache, options: .atomic)
         return PlaylistResult(source: source, channels: channels, fromCache: false)
     }
@@ -188,6 +190,7 @@ actor PlaylistRepository {
         let text = try decoder.decode(fresh)
         guard !parser.parse(text).isEmpty else { throw PlaylistRepositoryError.emptyPlaylist }
 
+        try ensureCacheDirectory()
         let current = try? Data(contentsOf: cache)
         if current != fresh {
             try fresh.write(to: cache, options: .atomic)
@@ -204,6 +207,21 @@ actor PlaylistRepository {
             throw PlaylistRepositoryError.httpStatus(http.statusCode)
         }
         return data
+    }
+
+    private func ensureCacheDirectory() throws {
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: cacheDirectory.path, isDirectory: &isDirectory) {
+            if isDirectory.boolValue {
+                return
+            }
+            try fileManager.removeItem(at: cacheDirectory)
+        }
+        try fileManager.createDirectory(
+            at: cacheDirectory,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
     }
 
     private func nameKey(_ slot: Int) -> String { "source_name_\(slot)" }
