@@ -44,20 +44,29 @@ struct DASHClearKeyPreparation: Sendable, Equatable {
     }
 }
 
+private struct DASHClearKeyTrackCandidate {
+    let plan: DASHTrackPlan
+    let initializationData: Data
+    let tracks: [CENCTrackInfo]
+}
+
 struct DASHClearKeySession {
     private let loader: any DASHResourceLoading
     private let keyProvider: any ClearKeyProviding
+    private let licenseClient: any ClearKeyLicenseLoading
     private let inspector: any CENCInspecting
     private let planner: DASHPlaybackPlanner
 
     init(
         loader: any DASHResourceLoading = DASHResourceLoader(),
         keyProvider: any ClearKeyProviding = PlaylistClearKeyProvider(),
+        licenseClient: any ClearKeyLicenseLoading = URLSessionClearKeyLicenseClient(),
         inspector: any CENCInspecting = CMAFCENCInspector(),
         planner: DASHPlaybackPlanner = DASHPlaybackPlanner()
     ) {
         self.loader = loader
         self.keyProvider = keyProvider
+        self.licenseClient = licenseClient
         self.inspector = inspector
         self.planner = planner
     }
@@ -74,7 +83,6 @@ struct DASHClearKeySession {
             throw DASHClearKeySessionError.unsupportedDRM
         }
 
-        let material = try keyProvider.material(for: source)
         let manifest = try await loader.loadManifest(
             from: manifestURL,
             headers: source.headers
@@ -85,16 +93,27 @@ struct DASHClearKeySession {
             segmentCount: segmentCount
         )
 
-        let video = try await prepareTrack(
+        let videoCandidate = try await inspectTrack(
             playbackPlan.video,
-            material: material,
             headers: source.headers
         )
-        let audio = try await prepareTrack(
+        let audioCandidate = try await inspectTrack(
             playbackPlan.audio,
-            material: material,
             headers: source.headers
         )
+
+        let candidates = [videoCandidate, audioCandidate].compactMap { $0 }
+        guard !candidates.isEmpty else {
+            throw DASHClearKeySessionError.noProtectedTrack
+        }
+
+        let material = try await resolveMaterial(
+            for: source,
+            candidates: candidates
+        )
+
+        let video = try makePreparedTrack(videoCandidate, material: material)
+        let audio = try makePreparedTrack(audioCandidate, material: material)
 
         guard video != nil || audio != nil else {
             throw DASHClearKeySessionError.noProtectedTrack
@@ -110,11 +129,10 @@ struct DASHClearKeySession {
         )
     }
 
-    private func prepareTrack(
+    private func inspectTrack(
         _ plan: DASHTrackPlan?,
-        material: ClearKeyMaterial,
         headers: [String: String]
-    ) async throws -> DASHPreparedTrack? {
+    ) async throws -> DASHClearKeyTrackCandidate? {
         guard let plan else { return nil }
 
         let initData = try await loader.loadData(
@@ -125,16 +143,78 @@ struct DASHClearKeySession {
         guard !inspection.tracks.isEmpty else {
             throw DASHClearKeySessionError.noProtectedTrack
         }
-        guard let track = inspection.tracks.first(where: { $0.keyID == material.keyID }) else {
+
+        return DASHClearKeyTrackCandidate(
+            plan: plan,
+            initializationData: initData,
+            tracks: inspection.tracks
+        )
+    }
+
+    private func resolveMaterial(
+        for source: StreamSource,
+        candidates: [DASHClearKeyTrackCandidate]
+    ) async throws -> ClearKeyMaterial {
+        let keyIDs = candidates.flatMap { candidate in
+            candidate.tracks.map(\.keyID)
+        }
+        guard let firstKeyID = keyIDs.first else {
+            throw DASHClearKeySessionError.noProtectedTrack
+        }
+
+        if let licenseURL = clearKeyLicenseURL(for: source) {
+            let material = try await licenseClient.material(
+                from: licenseURL,
+                keyID: firstKeyID,
+                headers: source.licenseHeaders
+            )
+            guard keyIDs.contains(material.keyID) else {
+                throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
+            }
+            return material
+        }
+
+        let material = try keyProvider.material(for: source)
+        guard keyIDs.contains(material.keyID) else {
+            throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
+        }
+        return material
+    }
+
+    private func makePreparedTrack(
+        _ candidate: DASHClearKeyTrackCandidate?,
+        material: ClearKeyMaterial
+    ) throws -> DASHPreparedTrack? {
+        guard let candidate else { return nil }
+        guard let track = candidate.tracks.first(where: { $0.keyID == material.keyID }) else {
             throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
         }
         try CMAFCENCInspector().validate(material: material, for: track)
 
         return DASHPreparedTrack(
-            plan: plan,
-            initializationData: initData,
+            plan: candidate.plan,
+            initializationData: candidate.initializationData,
             encryption: track
         )
+    }
+
+    private func clearKeyLicenseURL(for source: StreamSource) -> URL? {
+        if let value = source.licenseURI,
+           let url = URL(string: value),
+           isHTTP(url) {
+            return url
+        }
+        if let value = source.drmKey,
+           let url = URL(string: value),
+           isHTTP(url) {
+            return url
+        }
+        return nil
+    }
+
+    private func isHTTP(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
     }
 
     private func isClearKey(_ value: String?) -> Bool {
