@@ -30,10 +30,9 @@ struct SourceSettingsView: View {
 
                     Button {
                         Task {
+                            normalizeActiveSlot()
                             await model.saveSources(drafts, activeSlot: activeSlot)
-                            if model.errorMessage == nil {
-                                dismiss()
-                            }
+                            dismiss()
                         }
                     } label: {
                         HStack {
@@ -61,7 +60,7 @@ struct SourceSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Nguồn IPTV")
                     .font(.largeTitle.weight(.bold))
-                Text("Có thể lưu tối đa 5 playlist. Chọn một nguồn đang dùng rồi lưu để tải danh sách kênh.")
+                Text("Tối đa 5 playlist. Có thể quay lại màn này bất cứ lúc nào từ Danh sách kênh → Cài đặt.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -91,11 +90,21 @@ struct SourceSettingsView: View {
 
                 Spacer()
 
-                Button(activeSlot == index ? "Đã chọn" : "Chọn nguồn này") {
-                    activeSlot = index
+                if drafts[index].isConfigured {
+                    Button(activeSlot == index ? "Đã chọn" : "Chọn nguồn này") {
+                        activeSlot = index
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(activeSlot == index)
+                }
+
+                Button(role: .destructive) {
+                    clearDraft(index)
+                } label: {
+                    Label("Xóa", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
-                .disabled(!drafts[index].isConfigured || activeSlot == index)
+                .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -126,6 +135,22 @@ struct SourceSettingsView: View {
 
     private var hasConfiguredSource: Bool {
         drafts.contains(where: \.isConfigured)
+    }
+
+    private func clearDraft(_ index: Int) {
+        drafts[index] = PlaylistSource(slot: index, name: "", url: "")
+        if activeSlot == index {
+            normalizeActiveSlot()
+        }
+    }
+
+    private func normalizeActiveSlot() {
+        if drafts.indices.contains(activeSlot), drafts[activeSlot].isConfigured {
+            return
+        }
+        if let first = drafts.first(where: \.isConfigured) {
+            activeSlot = first.slot
+        }
     }
 
     private func binding(for index: Int, keyPath: WritableKeyPath<PlaylistSource, String>) -> Binding<String> {
