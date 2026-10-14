@@ -5,6 +5,8 @@ import Foundation
 final class AppModel: ObservableObject {
     private static let allGroupTitle = "Tất cả"
     private static let favoritesGroupTitle = "Yêu thích"
+    private static let lastChannelKey = "sitv.lastChannelID"
+    private static let lastGroupKey = "sitv.lastGroup"
 
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var sources: [PlaylistSource] = []
@@ -25,13 +27,16 @@ final class AppModel: ObservableObject {
     private let repository: PlaylistRepository
     private let favoritesStore: FavoritesStore
     private let coordinator: PlayerCoordinator
+    private let defaults: UserDefaults
 
     init(
         repository: PlaylistRepository = PlaylistRepository(),
-        favoritesStore: FavoritesStore = FavoritesStore()
+        favoritesStore: FavoritesStore = FavoritesStore(),
+        defaults: UserDefaults = .standard
     ) {
         self.repository = repository
         self.favoritesStore = favoritesStore
+        self.defaults = defaults
 
         let avPlayerEngine = AVPlayerEngine()
         let vlcPlayerEngine = VLCPlayerEngine()
@@ -77,6 +82,14 @@ final class AppModel: ObservableObject {
         selectedGroup == Self.favoritesGroupTitle
     }
 
+    var activeChannelNumber: Int? {
+        guard let activeChannel,
+              let index = channels.firstIndex(where: { $0.id == activeChannel.id }) else {
+            return nil
+        }
+        return index + 1
+    }
+
     func isFavorite(_ channel: Channel) -> Bool {
         favoriteChannelIDs.contains(channel.id)
     }
@@ -101,7 +114,13 @@ final class AppModel: ObservableObject {
         activeSource = await repository.activeSource()
     }
 
-    func loadPlaylist() async {
+    func selectGroup(_ group: String) {
+        guard groups.contains(group) else { return }
+        selectedGroup = group
+        defaults.set(group, forKey: Self.lastGroupKey)
+    }
+
+    func loadPlaylist(autoPlay: Bool = true) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -111,8 +130,24 @@ final class AppModel: ObservableObject {
             activeSource = result.source
             sources = await repository.sources()
             channels = result.channels
-            if !groups.contains(selectedGroup) {
+
+            let rememberedGroup = defaults.string(forKey: Self.lastGroupKey)
+            if let rememberedGroup, groups.contains(rememberedGroup) {
+                selectedGroup = rememberedGroup
+            } else if !groups.contains(selectedGroup) {
                 selectedGroup = Self.allGroupTitle
+            }
+
+            guard autoPlay, !channels.isEmpty else { return }
+
+            let rememberedChannelID = activeChannel?.id ?? defaults.string(forKey: Self.lastChannelKey)
+            let target = rememberedChannelID
+                .flatMap { id in channels.first(where: { $0.id == id }) }
+                ?? visibleChannels.first
+                ?? channels.first
+
+            if let target {
+                await play(target)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -124,17 +159,23 @@ final class AppModel: ObservableObject {
         await repository.selectSource(slot: activeSlot)
         await refreshSources()
         if activeSource.isConfigured {
+            selectedGroup = Self.allGroupTitle
+            defaults.set(Self.allGroupTitle, forKey: Self.lastGroupKey)
             await loadPlaylist()
         } else {
             channels = []
+            await stopPlayback()
         }
     }
 
     func selectSource(slot: Int) async {
         await repository.selectSource(slot: slot)
         await refreshSources()
+        selectedGroup = Self.allGroupTitle
+        defaults.set(Self.allGroupTitle, forKey: Self.lastGroupKey)
         guard activeSource.isConfigured else {
             channels = []
+            await stopPlayback()
             return
         }
         await loadPlaylist()
@@ -147,19 +188,44 @@ final class AppModel: ObservableObject {
             await loadPlaylist()
         } else {
             channels = []
+            await stopPlayback()
         }
     }
 
     func play(_ channel: Channel) async {
         errorMessage = nil
         do {
-            let attempt = try await coordinator.play(channel)
-            activeChannel = channel
-            activeAttempt = attempt
-            isPlayerPresented = true
+            try await startPlayback(channel)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func stepChannel(_ delta: Int) async {
+        let surfChannels = visibleChannels.isEmpty ? channels : visibleChannels
+        guard !surfChannels.isEmpty else { return }
+
+        let direction = delta < 0 ? -1 : 1
+        let currentIndex = activeChannel
+            .flatMap { current in surfChannels.firstIndex(where: { $0.id == current.id }) }
+            ?? (direction > 0 ? -1 : 0)
+
+        var lastError: Error?
+        for attemptOffset in 1...surfChannels.count {
+            var index = currentIndex + (attemptOffset * direction)
+            index %= surfChannels.count
+            if index < 0 { index += surfChannels.count }
+            let candidate = surfChannels[index]
+
+            do {
+                try await startPlayback(candidate)
+                return
+            } catch {
+                lastError = error
+            }
+        }
+
+        errorMessage = lastError?.localizedDescription ?? "Không tìm thấy kênh hoạt động"
     }
 
     func resumeDASHPlayback() async {
@@ -180,5 +246,13 @@ final class AppModel: ObservableObject {
         isPlayerPresented = false
         activeChannel = nil
         activeAttempt = nil
+    }
+
+    private func startPlayback(_ channel: Channel) async throws {
+        let attempt = try await coordinator.play(channel)
+        activeChannel = channel
+        activeAttempt = attempt
+        isPlayerPresented = true
+        defaults.set(channel.id, forKey: Self.lastChannelKey)
     }
 }
