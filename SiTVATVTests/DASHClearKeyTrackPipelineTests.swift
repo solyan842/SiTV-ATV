@@ -83,10 +83,12 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         )
 
         let result = try await pipeline.processSegment(at: 0)
+        let attempts = await processor.attemptCount()
+        let requests = await loader.requests()
 
         XCTAssertEqual(result.segmentIndex, 0)
-        XCTAssertEqual(await processor.attemptCount(), 2)
-        XCTAssertEqual(await loader.requests().count, 2)
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(requests.count, 2)
     }
 
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
