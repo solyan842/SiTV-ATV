@@ -17,12 +17,14 @@ struct DASHClearKeyTrackPipeline {
     private let processor: any DASHClearKeyMediaProcessing
     private let plan: DASHTrackPlan
     private let headers: [String: String]
+    private let incompleteSegmentRetryCount: Int
 
     init(
         preparedTrack: DASHPreparedTrack,
         material: ClearKeyMaterial,
         headers: [String: String],
-        loader: any DASHResourceLoading = DASHResourceLoader()
+        loader: any DASHResourceLoading = DASHResourceLoader(),
+        incompleteSegmentRetryCount: Int = 3
     ) async throws {
         self.loader = loader
         self.processor = try await DASHClearKeyMediaProcessor(
@@ -31,18 +33,21 @@ struct DASHClearKeyTrackPipeline {
         )
         self.plan = preparedTrack.plan
         self.headers = headers
+        self.incompleteSegmentRetryCount = max(0, incompleteSegmentRetryCount)
     }
 
     init(
         plan: DASHTrackPlan,
         headers: [String: String],
         loader: any DASHResourceLoading,
-        processor: any DASHClearKeyMediaProcessing
+        processor: any DASHClearKeyMediaProcessing,
+        incompleteSegmentRetryCount: Int = 3
     ) {
         self.plan = plan
         self.headers = headers
         self.loader = loader
         self.processor = processor
+        self.incompleteSegmentRetryCount = max(0, incompleteSegmentRetryCount)
     }
 
     var segmentCount: Int {
@@ -57,8 +62,29 @@ struct DASHClearKeyTrackPipeline {
     }
 
     func process(segment: DASHResolvedSegment) async throws -> ParsedMediaSegment {
-        let data = try await loader.loadData(from: segment.url, headers: headers)
-        return try await processor.process(segmentData: data)
+        var retry = 0
+        while true {
+            try Task.checkCancellation()
+            let data = try await loader.loadData(from: segment.url, headers: headers)
+            do {
+                return try await processor.process(segmentData: data)
+            } catch let error as BinaryIOError {
+                guard case .insufficientData = error,
+                      retry < incompleteSegmentRetryCount else {
+                    throw error
+                }
+
+                // A live CMAF URL can become visible before its moof/mdat payload
+                // is complete. CMAFMediaSegmentReader does not commit its
+                // cross-segment state until parsing succeeds, so it is safe to
+                // fetch the same segment again before giving up.
+                retry += 1
+                let delayMilliseconds = 150 * retry
+                try await Task.sleep(
+                    nanoseconds: UInt64(delayMilliseconds) * 1_000_000
+                )
+            }
+        }
     }
 
     func processPlannedSegments() async throws -> [ParsedMediaSegment] {
