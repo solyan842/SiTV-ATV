@@ -70,9 +70,15 @@ struct DASHResourceLoader: DASHResourceLoading {
     }
 
     private func makeRequest(url: URL, headers: [String: String]) -> URLRequest {
-        var request = URLRequest(url: url, timeoutInterval: timeout)
+        var request = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: timeout
+        )
         request.httpMethod = "GET"
         request.setValue("SiTV/0.1 tvOS", forHTTPHeaderField: "User-Agent")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
