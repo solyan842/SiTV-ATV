@@ -9,7 +9,9 @@ final class AVPlayerEngine: PlayerEngine {
 
     init(startupTimeoutSeconds: Double = 12) {
         startupTimeoutNanoseconds = UInt64(max(startupTimeoutSeconds, 1) * 1_000_000_000)
-        player.automaticallyWaitsToMinimizeStalling = true
+        // Live TV channel changes should start rendering as soon as data is
+        // available instead of waiting for AVPlayer's conservative stall buffer.
+        player.automaticallyWaitsToMinimizeStalling = false
     }
 
     func canPlay(_ source: StreamSource) -> Bool {
@@ -30,6 +32,7 @@ final class AVPlayerEngine: PlayerEngine {
         }
 
         let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 1.0
         player.replaceCurrentItem(with: item)
         player.play()
 
@@ -43,7 +46,7 @@ final class AVPlayerEngine: PlayerEngine {
             case .failed:
                 throw PlayerEngineError.failedToStart(item.error?.localizedDescription ?? "AVPlayer failed")
             case .unknown:
-                try await Task.sleep(nanoseconds: 100_000_000)
+                try await Task.sleep(nanoseconds: 50_000_000)
             @unknown default:
                 throw PlayerEngineError.failedToStart("Unknown AVPlayer item status")
             }
