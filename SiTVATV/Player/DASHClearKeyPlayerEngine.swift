@@ -26,6 +26,8 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
     private let playbackController: any DASHPlaybackControlling
     private let maxVideoHeight: Int?
     private let segmentCount: Int
+    private let generationLock = NSLock()
+    private var startGeneration: UInt64 = 0
 
     private(set) var activeRequest: PlaybackRequest?
     private(set) var playbackContext: DASHClearKeyPlaybackContext?
@@ -70,17 +72,28 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
             throw PlayerEngineError.unsupported
         }
 
-        await stop()
+        let generation = advanceGeneration()
+        activeRequest = nil
+        playbackContext = nil
+        await playbackController.stop()
+        guard isCurrent(generation) else {
+            throw PlayerEngineError.stopped
+        }
 
         do {
             let context = try await prepareContext(for: request.source)
+            guard isCurrent(generation) else {
+                throw PlayerEngineError.stopped
+            }
             activeRequest = request
             playbackContext = context
         } catch let error as PlayerEngineError {
             throw error
         } catch {
-            activeRequest = nil
-            playbackContext = nil
+            if isCurrent(generation) {
+                activeRequest = nil
+                playbackContext = nil
+            }
             throw PlayerEngineError.failedToStart(String(describing: error))
         }
     }
@@ -90,22 +103,29 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
               var context = playbackContext else {
             throw PlayerEngineError.failedToStart("DASH engine is not prepared")
         }
+        let generation = currentGeneration()
 
         while true {
+            guard isCurrent(generation) else {
+                throw PlayerEngineError.stopped
+            }
             do {
                 try await playbackController.resume(
                     context: context,
                     headers: request.source.headers
                 )
+                guard isCurrent(generation) else {
+                    throw PlayerEngineError.stopped
+                }
                 return
             } catch DASHPlaybackControllerError.reprepareRequired {
-                guard activeRequest == request else {
+                guard isCurrent(generation), activeRequest == request else {
                     throw PlayerEngineError.stopped
                 }
 
                 do {
                     let refreshedContext = try await prepareContext(for: request.source)
-                    guard activeRequest == request else {
+                    guard isCurrent(generation), activeRequest == request else {
                         throw PlayerEngineError.stopped
                     }
                     playbackContext = refreshedContext
@@ -124,9 +144,10 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
     }
 
     func stop() async {
-        await playbackController.stop()
+        _ = advanceGeneration()
         activeRequest = nil
         playbackContext = nil
+        await playbackController.stop()
     }
 
     private func prepareContext(
@@ -138,6 +159,23 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
             segmentCount: segmentCount
         )
         return try await contextBuilder.make(preparation: preparation)
+    }
+
+    private func advanceGeneration() -> UInt64 {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        startGeneration &+= 1
+        return startGeneration
+    }
+
+    private func currentGeneration() -> UInt64 {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        return startGeneration
+    }
+
+    private func isCurrent(_ generation: UInt64) -> Bool {
+        currentGeneration() == generation
     }
 
     private func normalized(_ value: String?) -> String {
