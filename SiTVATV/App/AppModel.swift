@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     private static let allGroupTitle = "Tất cả"
-    private static let favoritesGroupTitle = "Yêu thích"
+    private static let favoritesGroupTitle = "KÊNH YÊU THÍCH ♥"
     private static let lastChannelKey = "sitv.lastChannelID"
     private static let lastGroupKey = "sitv.lastGroup"
 
@@ -65,7 +65,7 @@ final class AppModel: ObservableObject {
                 .map(\.group)
                 .filter { !$0.isEmpty && !reserved.contains($0) }
         )
-        return [Self.allGroupTitle, Self.favoritesGroupTitle]
+        return [Self.favoritesGroupTitle, Self.allGroupTitle]
             + values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
@@ -108,6 +108,14 @@ final class AppModel: ObservableObject {
 
     func toggleFavorite(_ channel: Channel) async {
         favoriteChannelIDs = await favoritesStore.toggle(channelID: channel.id)
+    }
+
+    func saveFavorite(_ channel: Channel) async {
+        favoriteChannelIDs = await favoritesStore.setFavorite(true, channelID: channel.id)
+    }
+
+    func removeFavorite(_ channel: Channel) async {
+        favoriteChannelIDs = await favoritesStore.setFavorite(false, channelID: channel.id)
     }
 
     func refreshSources() async {
@@ -251,9 +259,6 @@ final class AppModel: ObservableObject {
     }
 
     private func startPlayback(_ channel: Channel) async throws {
-        // Match Android TV behavior: update the selected channel immediately so
-        // focus, now-playing UI and the render surface respond at once while the
-        // selected engine performs its startup/fallback work in the background.
         activeChannel = channel
         activeAttempt = nil
         isPlayerPresented = true
