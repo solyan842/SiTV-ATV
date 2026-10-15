@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var favoriteChannelIDs: Set<String> = []
     @Published var selectedGroup: String = allGroupTitle
     @Published var isLoading = false
+    @Published private(set) var isPlaybackStarting = false
     @Published var errorMessage: String?
     @Published var isPlayerPresented = false
     @Published private(set) var activeChannel: Channel?
@@ -242,6 +243,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopPlayback() async {
+        isPlaybackStarting = false
         await coordinator.stop()
         isPlayerPresented = false
         activeChannel = nil
@@ -249,10 +251,22 @@ final class AppModel: ObservableObject {
     }
 
     private func startPlayback(_ channel: Channel) async throws {
-        let attempt = try await coordinator.play(channel)
+        // Match Android TV behavior: update the selected channel immediately so
+        // focus, now-playing UI and the render surface respond at once while the
+        // selected engine performs its startup/fallback work in the background.
         activeChannel = channel
-        activeAttempt = attempt
+        activeAttempt = nil
         isPlayerPresented = true
+        isPlaybackStarting = true
         defaults.set(channel.id, forKey: Self.lastChannelKey)
+
+        do {
+            let attempt = try await coordinator.play(channel)
+            activeAttempt = attempt
+            isPlaybackStarting = false
+        } catch {
+            isPlaybackStarting = false
+            throw error
+        }
     }
 }
