@@ -70,6 +70,25 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         XCTAssertEqual(requests.first?.headers, headers)
     }
 
+    func testRetriesSameSegmentAfterInsufficientDataWithoutPoisoningPlayback() async throws {
+        let url = URL(string: "https://example.com/live-42.m4s")!
+        let loader = TrackPipelineLoader(payloads: [url: Data(repeating: 0x2A, count: 74)])
+        let processor = RetryTrackPipelineProcessor()
+        let pipeline = DASHClearKeyTrackPipeline(
+            plan: makePlan(urls: [url]),
+            headers: [:],
+            loader: loader,
+            processor: processor,
+            incompleteSegmentRetryCount: 1
+        )
+
+        let result = try await pipeline.processSegment(at: 0)
+
+        XCTAssertEqual(result.segmentIndex, 0)
+        XCTAssertEqual(await processor.attemptCount(), 2)
+        XCTAssertEqual(await loader.requests().count, 2)
+    }
+
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
         let url = URL(string: "https://example.com/seg-1.m4s")!
         let loader = TrackPipelineLoader(payloads: [url: Data([0x01])])
@@ -165,18 +184,7 @@ private actor TrackPipelineProcessor: DASHClearKeyMediaProcessing {
     func process(segmentData: Data) async throws -> ParsedMediaSegment {
         let index = received.count
         received.append(segmentData)
-        return ParsedMediaSegment(
-            segmentIndex: index,
-            samples: [],
-            movieFragmentSequenceNumbers: [],
-            baseMediaDecodeTimes: [:],
-            hasSegmentIndex: false,
-            hasProducerReferenceTime: false,
-            eventMessages: [],
-            segmentIndices: [],
-            isChunkedSegment: false,
-            firstSampleIsSyncSample: true
-        )
+        return makeParsedMediaSegment(index: index)
     }
 
     func finalize() async throws {
@@ -190,6 +198,39 @@ private actor TrackPipelineProcessor: DASHClearKeyMediaProcessing {
     func wasFinalized() -> Bool {
         finalized
     }
+}
+
+private actor RetryTrackPipelineProcessor: DASHClearKeyMediaProcessing {
+    private var attempts = 0
+
+    func process(segmentData: Data) async throws -> ParsedMediaSegment {
+        attempts += 1
+        if attempts == 1 {
+            throw BinaryIOError.insufficientData(expected: 29_545, available: 74)
+        }
+        return makeParsedMediaSegment(index: 0)
+    }
+
+    func finalize() async throws {}
+
+    func attemptCount() -> Int {
+        attempts
+    }
+}
+
+private func makeParsedMediaSegment(index: Int) -> ParsedMediaSegment {
+    ParsedMediaSegment(
+        segmentIndex: index,
+        samples: [],
+        movieFragmentSequenceNumbers: [],
+        baseMediaDecodeTimes: [:],
+        hasSegmentIndex: false,
+        hasProducerReferenceTime: false,
+        eventMessages: [],
+        segmentIndices: [],
+        isChunkedSegment: false,
+        firstSampleIsSyncSample: true
+    )
 }
 
 private enum TrackPipelineTestError: Error {
