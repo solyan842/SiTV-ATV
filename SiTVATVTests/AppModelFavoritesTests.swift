@@ -59,9 +59,10 @@ final class AppModelFavoritesTests: XCTestCase {
 
         await model.saveFavorite(channel)
         await model.saveFavorite(channel)
+        let persisted = await favoritesStore.channelIDs()
 
         XCTAssertTrue(model.isFavorite(channel))
-        XCTAssertEqual(await favoritesStore.channelIDs(), Set(["vtv1"]))
+        XCTAssertEqual(persisted, Set(["vtv1"]))
     }
 
     func testBootstrapRestoresFavoriteStateWithoutConfiguredPlaylist() async throws {
