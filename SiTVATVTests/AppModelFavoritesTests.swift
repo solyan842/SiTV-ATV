@@ -38,6 +38,32 @@ final class AppModelFavoritesTests: XCTestCase {
         XCTAssertTrue(persistedAfterRemove.isEmpty)
     }
 
+    func testSaveFavoriteIsIdempotentLikeAndroidPrompt() async throws {
+        let suite = "SiTVATVTests.AppModelFavorites.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let favoritesStore = FavoritesStore(defaults: defaults)
+        let model = AppModel(
+            repository: PlaylistRepository(defaults: defaults),
+            favoritesStore: favoritesStore
+        )
+        let channel = Channel(
+            id: "vtv1",
+            name: "VTV1",
+            group: "VTV",
+            logoURL: nil,
+            sources: []
+        )
+
+        await model.saveFavorite(channel)
+        await model.saveFavorite(channel)
+
+        XCTAssertTrue(model.isFavorite(channel))
+        XCTAssertEqual(await favoritesStore.channelIDs(), Set(["vtv1"]))
+    }
+
     func testBootstrapRestoresFavoriteStateWithoutConfiguredPlaylist() async throws {
         let suite = "SiTVATVTests.AppModelFavorites.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -54,6 +80,6 @@ final class AppModelFavoritesTests: XCTestCase {
         await model.bootstrap()
 
         XCTAssertEqual(model.favoriteChannelIDs, Set(["vtv1"]))
-        XCTAssertTrue(model.groups.contains("Yêu thích"))
+        XCTAssertTrue(model.groups.contains("KÊNH YÊU THÍCH ♥"))
     }
 }
