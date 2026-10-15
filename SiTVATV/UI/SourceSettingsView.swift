@@ -18,119 +18,106 @@ struct SourceSettingsView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            SettingsTheme.black.ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 26) {
-                    header
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("SiTV · Cài đặt")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(SettingsTheme.text)
 
-                    ForEach(drafts.indices, id: \.self) { index in
-                        sourceCard(index)
-                    }
+                    Text("Nguồn IPTV · đặt tên và lưu tối đa 5 URL")
+                        .font(.system(size: 15))
+                        .foregroundStyle(SettingsTheme.textDim)
+                        .padding(.top, 18)
 
-                    Button {
-                        Task {
-                            normalizeActiveSlot()
-                            await model.saveSources(drafts, activeSlot: activeSlot)
-                            dismiss()
+                    VStack(spacing: 10) {
+                        ForEach(drafts.indices, id: \.self) { index in
+                            sourceRow(index)
                         }
-                    } label: {
-                        HStack {
-                            if model.isLoading {
-                                ProgressView()
+                    }
+                    .padding(.top, 12)
+
+                    HStack(spacing: 16) {
+                        Button {
+                            Task {
+                                normalizeActiveSlot()
+                                await model.saveSources(drafts, activeSlot: activeSlot)
+                                dismiss()
                             }
-                            Label("Lưu và tải playlist", systemImage: "arrow.down.circle.fill")
+                        } label: {
+                            HStack(spacing: 10) {
+                                if model.isLoading {
+                                    ProgressView()
+                                }
+                                Text("Lưu nguồn IPTV")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 52)
                         }
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(SiTVSettingsButtonStyle())
+                        .disabled(model.isLoading || !hasConfiguredSource)
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Đóng")
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                        .buttonStyle(SiTVSettingsButtonStyle())
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.isLoading || !hasConfiguredSource)
-                    .padding(.top, 8)
+                    .padding(.top, 18)
                 }
-                .frame(maxWidth: 980)
-                .padding(.horizontal, 48)
-                .padding(.vertical, 36)
+                .frame(width: 820)
+                .padding(.top, 34)
+                .padding(.bottom, 28)
                 .frame(maxWidth: .infinity)
             }
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Nguồn IPTV")
-                    .font(.largeTitle.weight(.bold))
-                Text("Tối đa 5 playlist. Có thể quay lại màn này bất cứ lúc nào từ Danh sách kênh → Cài đặt.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+    private func sourceRow(_ index: Int) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                clearDraft(index)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 50, height: 50)
             }
+            .buttonStyle(SiTVSettingsButtonStyle())
+            .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
 
-            Spacer()
+            TextField("Tên nguồn \(index + 1)", text: binding(for: index, keyPath: \.name))
+                .textFieldStyle(.plain)
+                .foregroundStyle(SettingsTheme.text)
+                .padding(.horizontal, 14)
+                .frame(width: 180, height: 58)
+                .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
+
+            TextField("https://...", text: binding(for: index, keyPath: \.url))
+                .textFieldStyle(.plain)
+                .textInputAutocapitalization(.never)
+                .foregroundStyle(SettingsTheme.text)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
 
             Button {
-                dismiss()
-            } label: {
-                Label("Đóng", systemImage: "xmark")
-            }
-            .buttonStyle(.bordered)
-        }
-    }
-
-    private func sourceCard(_ index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 14) {
-                Text("Nguồn \(index + 1)")
-                    .font(.title3.weight(.semibold))
-
-                if activeSlot == index {
-                    Label("Đang dùng", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
                 if drafts[index].isConfigured {
-                    Button(activeSlot == index ? "Đã chọn" : "Chọn nguồn này") {
-                        activeSlot = index
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(activeSlot == index)
+                    activeSlot = index
                 }
-
-                Button(role: .destructive) {
-                    clearDraft(index)
-                } label: {
-                    Label("Xóa", systemImage: "trash")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
+            } label: {
+                Image(systemName: activeSlot == index ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(activeSlot == index ? SettingsTheme.orange : SettingsTheme.textDim)
+                    .frame(width: 50, height: 50)
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Tên nguồn")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Ví dụ: SiTV chính", text: binding(for: index, keyPath: \.name))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("URL M3U")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("https://example.com/playlist.m3u", text: binding(for: index, keyPath: \.url))
-                    .textInputAutocapitalization(.never)
-            }
+            .buttonStyle(SiTVSettingsButtonStyle())
+            .disabled(!drafts[index].isConfigured)
+            .accessibilityLabel(activeSlot == index ? "Nguồn đang dùng" : "Chọn nguồn \(index + 1)")
         }
-        .padding(24)
-        .background(
-            Color.white.opacity(activeSlot == index ? 0.095 : 0.055),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(activeSlot == index ? 0.20 : 0.08), lineWidth: 1)
-        }
+        .frame(height: 58)
     }
 
     private var hasConfiguredSource: Bool {
@@ -159,4 +146,28 @@ struct SourceSettingsView: View {
             set: { drafts[index][keyPath: keyPath] = $0 }
         )
     }
+}
+
+private struct SiTVSettingsButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(SettingsTheme.text)
+            .background(
+                isFocused ? SettingsTheme.orange : SettingsTheme.button,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .scaleEffect(isFocused ? 1.035 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
+private enum SettingsTheme {
+    static let black = Color(red: 8 / 255, green: 10 / 255, blue: 13 / 255)
+    static let card = Color(red: 34 / 255, green: 38 / 255, blue: 45 / 255).opacity(0.80)
+    static let button = Color(red: 52 / 255, green: 58 / 255, blue: 68 / 255).opacity(0.80)
+    static let orange = Color(red: 1, green: 138 / 255, blue: 42 / 255)
+    static let text = Color(red: 1, green: 247 / 255, blue: 244 / 255)
+    static let textDim = Color(red: 174 / 255, green: 183 / 255, blue: 194 / 255)
 }
