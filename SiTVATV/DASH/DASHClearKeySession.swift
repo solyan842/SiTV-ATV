@@ -17,6 +17,19 @@ struct DASHPreparedTrack: Sendable, Equatable {
     let plan: DASHTrackPlan
     let initializationData: Data
     let encryption: CENCTrackInfo
+    let keyMaterial: ClearKeyMaterial?
+
+    init(
+        plan: DASHTrackPlan,
+        initializationData: Data,
+        encryption: CENCTrackInfo,
+        keyMaterial: ClearKeyMaterial? = nil
+    ) {
+        self.plan = plan
+        self.initializationData = initializationData
+        self.encryption = encryption
+        self.keyMaterial = keyMaterial
+    }
 }
 
 struct DASHClearKeyPreparation: Sendable, Equatable {
@@ -107,21 +120,21 @@ struct DASHClearKeySession {
             throw DASHClearKeySessionError.noProtectedTrack
         }
 
-        let material = try await resolveMaterial(
+        let materials = try await resolveMaterials(
             for: source,
             candidates: candidates
         )
 
-        let video = try makePreparedTrack(videoCandidate, material: material)
-        let audio = try makePreparedTrack(audioCandidate, material: material)
+        let video = try makePreparedTrack(videoCandidate, materials: materials)
+        let audio = try makePreparedTrack(audioCandidate, materials: materials)
 
-        guard video != nil || audio != nil else {
-            throw DASHClearKeySessionError.noProtectedTrack
+        guard let representativeMaterial = video?.keyMaterial ?? audio?.keyMaterial else {
+            throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
         }
 
         return DASHClearKeyPreparation(
             manifest: manifest,
-            keyMaterial: material,
+            keyMaterial: representativeMaterial,
             video: video,
             audio: audio,
             manifestURL: manifestURL,
@@ -151,42 +164,62 @@ struct DASHClearKeySession {
         )
     }
 
-    private func resolveMaterial(
+    private func resolveMaterials(
         for source: StreamSource,
         candidates: [DASHClearKeyTrackCandidate]
-    ) async throws -> ClearKeyMaterial {
-        let keyIDs = candidates.flatMap { candidate in
-            candidate.tracks.map(\.keyID)
-        }
-        guard let firstKeyID = keyIDs.first else {
+    ) async throws -> [Data: ClearKeyMaterial] {
+        var seen = Set<Data>()
+        let keyIDs = candidates
+            .flatMap { $0.tracks.map(\.keyID) }
+            .filter { seen.insert($0).inserted }
+
+        guard !keyIDs.isEmpty else {
             throw DASHClearKeySessionError.noProtectedTrack
         }
 
+        let resolved: [ClearKeyMaterial]
         if let licenseURL = clearKeyLicenseURL(for: source) {
-            let material = try await licenseClient.material(
-                from: licenseURL,
-                keyID: firstKeyID,
-                headers: source.licenseHeaders
-            )
-            guard keyIDs.contains(material.keyID) else {
-                throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
+            if let collectionClient = licenseClient as? any ClearKeyLicenseCollectionLoading {
+                resolved = try await collectionClient.materials(
+                    from: licenseURL,
+                    keyIDs: keyIDs,
+                    headers: source.licenseHeaders
+                )
+            } else {
+                var values: [ClearKeyMaterial] = []
+                for keyID in keyIDs {
+                    values.append(
+                        try await licenseClient.material(
+                            from: licenseURL,
+                            keyID: keyID,
+                            headers: source.licenseHeaders
+                        )
+                    )
+                }
+                resolved = values
             }
-            return material
+        } else if let collectionProvider = keyProvider as? any ClearKeyCollectionProviding {
+            resolved = try collectionProvider.materials(for: source)
+        } else {
+            resolved = [try keyProvider.material(for: source)]
         }
 
-        let material = try keyProvider.material(for: source)
-        guard keyIDs.contains(material.keyID) else {
+        let allowed = Set(keyIDs)
+        let matching = resolved.filter { allowed.contains($0.keyID) }
+        guard !matching.isEmpty else {
             throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
         }
-        return material
+
+        return Dictionary(uniqueKeysWithValues: matching.map { ($0.keyID, $0) })
     }
 
     private func makePreparedTrack(
         _ candidate: DASHClearKeyTrackCandidate?,
-        material: ClearKeyMaterial
+        materials: [Data: ClearKeyMaterial]
     ) throws -> DASHPreparedTrack? {
         guard let candidate else { return nil }
-        guard let track = candidate.tracks.first(where: { $0.keyID == material.keyID }) else {
+        guard let track = candidate.tracks.first(where: { materials[$0.keyID] != nil }),
+              let material = materials[track.keyID] else {
             throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
         }
         try CMAFCENCInspector().validate(material: material, for: track)
@@ -194,7 +227,8 @@ struct DASHClearKeySession {
         return DASHPreparedTrack(
             plan: candidate.plan,
             initializationData: candidate.initializationData,
-            encryption: track
+            encryption: track,
+            keyMaterial: material
         )
     }
 
