@@ -71,7 +71,7 @@ final class DASHClearKeyLicenseSessionTests: XCTestCase {
         let session = DASHClearKeySession(
             loader: LicenseTestResourceLoader(
                 manifest: manifest,
-                dataByURL: [initURL: Data([0x01, 0x02])]
+                dataByURL: [initURL: minimalLicenseInitSegment()]
             ),
             licenseClient: LicenseTestClient(
                 expectedURL: licenseURL,
@@ -88,6 +88,7 @@ final class DASHClearKeyLicenseSessionTests: XCTestCase {
         XCTAssertEqual(prepared.keyMaterial.keyID, kid)
         XCTAssertEqual(prepared.keyMaterial.key, key)
         XCTAssertEqual(prepared.video?.encryption.keyID, kid)
+        XCTAssertEqual(prepared.video?.keyMaterial, ClearKeyMaterial(keyID: kid, key: key))
     }
 }
 
@@ -136,4 +137,8 @@ private struct LicenseTestInspector: CENCInspecting {
     func inspect(initSegment data: Data) async throws -> CENCInspection {
         inspection
     }
+}
+
+private func minimalLicenseInitSegment() -> Data {
+    Data([0x00, 0x00, 0x00, 0x08, 0x6d, 0x6f, 0x6f, 0x76])
 }
