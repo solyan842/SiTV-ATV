@@ -208,12 +208,14 @@ struct DASHClearKeySession {
         }
 
         let allowed = Set(keyIDs)
-        let matching = resolved.filter { allowed.contains($0.keyID) }
-        guard !matching.isEmpty else {
+        var byKeyID: [Data: ClearKeyMaterial] = [:]
+        for material in resolved where allowed.contains(material.keyID) {
+            byKeyID[material.keyID] = material
+        }
+        guard !byKeyID.isEmpty else {
             throw DASHClearKeySessionError.keyIDNotPresentInSelectedTracks
         }
-
-        return Dictionary(uniqueKeysWithValues: matching.map { ($0.keyID, $0) })
+        return byKeyID
     }
 
     private func makePreparedTrack(
