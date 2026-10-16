@@ -69,6 +69,7 @@ struct DASHClearKeySession {
     private let licenseClient: any ClearKeyLicenseLoading
     private let inspector: any CENCInspecting
     private let planner: DASHPlaybackPlanner
+    private let bmffValidator = DASHISOBMFFValidator()
 
     init(
         loader: any DASHResourceLoading = DASHResourceLoader(),
@@ -152,6 +153,8 @@ struct DASHClearKeySession {
             from: plan.initializationURL,
             headers: headers
         )
+        try bmffValidator.validateInitializationSegment(initData)
+
         let inspection = try await inspector.inspect(initSegment: initData)
         guard !inspection.tracks.isEmpty else {
             throw DASHClearKeySessionError.noProtectedTrack
