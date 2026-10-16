@@ -35,6 +35,12 @@ final class DASHSynchronizedRenderer {
     }
 
     func start(at sourceTime: CMTime = .zero) {
+        // AVSampleBufferDisplayLayer can remain in a failed state after malformed
+        // or incomplete media. Recover it before a later channel reuses this
+        // long-lived renderer instance.
+        if displayLayer.status == .failed {
+            displayLayer.flushAndRemoveImage()
+        }
         synchronizer.setRate(1, time: sourceTime)
     }
 
@@ -43,6 +49,9 @@ final class DASHSynchronizedRenderer {
     }
 
     func primeVideo(_ sampleBuffer: CMSampleBuffer) {
+        if displayLayer.status == .failed {
+            displayLayer.flushAndRemoveImage()
+        }
         videoRenderer.enqueue(sampleBuffer)
     }
 
@@ -61,8 +70,10 @@ final class DASHSynchronizedRenderer {
     }
 
     func flush() async {
+        synchronizer.rate = 0
         videoRenderer.flush()
         audioRenderer.flush()
+        displayLayer.flushAndRemoveImage()
     }
 
     private func waitUntilVideoReady() async throws {
