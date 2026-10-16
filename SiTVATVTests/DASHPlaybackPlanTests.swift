@@ -91,6 +91,57 @@ final class DASHPlaybackPlanTests: XCTestCase {
         XCTAssertEqual(plan.video?.mediaSegments.map(\.time), [8_000, 10_000])
     }
 
+    func testDynamicDurationTemplateStartsNearLiveEdgeInsteadOfStartNumber() throws {
+        let representation = makeRepresentation(
+            id: "duration-live",
+            bandwidth: 4_000_000,
+            width: 1920,
+            height: 1080,
+            base: "live/",
+            template: DASHSegmentTemplate(
+                initialization: "init.mp4",
+                media: "segment-$Number$.m4s",
+                timescale: 1,
+                duration: 2,
+                startNumber: 1,
+                presentationTimeOffset: 0,
+                timeline: []
+            )
+        )
+        let adaptation = DASHAdaptationSet(
+            id: "video",
+            mimeType: "video/mp4",
+            contentType: "video",
+            codecs: "avc1.640028",
+            language: nil,
+            baseURL: URL(string: "https://example.com/live/")!,
+            segmentTemplate: nil,
+            contentProtections: [],
+            representations: [representation]
+        )
+        let manifest = DASHManifest(
+            type: .dynamic,
+            minimumUpdatePeriod: 2,
+            baseURL: URL(string: "https://example.com/")!,
+            periods: [
+                DASHPeriod(
+                    id: "live",
+                    baseURL: URL(string: "https://example.com/")!,
+                    adaptationSets: [adaptation],
+                    start: 10
+                )
+            ],
+            availabilityStartTime: Date(timeIntervalSince1970: 1_000),
+            publishTime: Date(timeIntervalSince1970: 1_060),
+            suggestedPresentationDelay: 4
+        )
+
+        let plan = try DASHPlaybackPlanner().makePlan(from: manifest, segmentCount: 3)
+
+        XCTAssertEqual(plan.video?.mediaSegments.map(\.number), [22, 23, 24])
+        XCTAssertEqual(plan.video?.mediaSegments.map(\.time), [42, 44, 46])
+    }
+
     func testHeightLimitSelects720p() throws {
         let manifest = DASHManifest(
             type: .static,
