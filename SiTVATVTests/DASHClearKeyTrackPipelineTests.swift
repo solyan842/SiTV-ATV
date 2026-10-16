@@ -6,10 +6,12 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
     func testProcessesPlannedSegmentsInOrderWithHeaders() async throws {
         let firstURL = URL(string: "https://example.com/seg-1.m4s")!
         let secondURL = URL(string: "https://example.com/seg-2.m4s")!
+        let firstData = minimalMediaSegment(marker: 0x01)
+        let secondData = minimalMediaSegment(marker: 0x02)
         let loader = TrackPipelineLoader(
             payloads: [
-                firstURL: Data([0x01]),
-                secondURL: Data([0x02])
+                firstURL: firstData,
+                secondURL: secondData
             ]
         )
         let processor = TrackPipelineProcessor()
@@ -25,7 +27,7 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
 
         XCTAssertEqual(results.map(\.segmentIndex), [0, 1])
         let payloads = await processor.payloads()
-        XCTAssertEqual(payloads, [Data([0x01]), Data([0x02])])
+        XCTAssertEqual(payloads, [firstData, secondData])
         let requests = await loader.requests()
         XCTAssertEqual(requests.map(\.url), [firstURL, secondURL])
         XCTAssertEqual(requests.map(\.headers), [headers, headers])
@@ -39,10 +41,12 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         let plannedURL = URL(string: "https://example.com/seg-1.m4s")!
         let refreshedURL = URL(string: "https://example.com/seg-7.m4s")!
         let headers = ["User-Agent": "SiTV"]
+        let plannedData = minimalMediaSegment(marker: 0x01)
+        let refreshedData = minimalMediaSegment(marker: 0x07)
         let loader = TrackPipelineLoader(
             payloads: [
-                plannedURL: Data([0x01]),
-                refreshedURL: Data([0x07])
+                plannedURL: plannedData,
+                refreshedURL: refreshedData
             ]
         )
         let processor = TrackPipelineProcessor()
@@ -63,7 +67,7 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
 
         XCTAssertEqual(result.segmentIndex, 0)
         let payloads = await processor.payloads()
-        XCTAssertEqual(payloads, [Data([0x07])])
+        XCTAssertEqual(payloads, [refreshedData])
         let requests = await loader.requests()
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests.first?.url, refreshedURL)
@@ -72,7 +76,8 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
 
     func testRetriesSameSegmentAfterInsufficientDataWithoutPoisoningPlayback() async throws {
         let url = URL(string: "https://example.com/live-42.m4s")!
-        let loader = TrackPipelineLoader(payloads: [url: Data(repeating: 0x2A, count: 74)])
+        let validData = minimalMediaSegment(marker: 0x2A)
+        let loader = TrackPipelineLoader(payloads: [url: validData])
         let processor = RetryTrackPipelineProcessor()
         let pipeline = DASHClearKeyTrackPipeline(
             plan: makePlan(urls: [url]),
@@ -91,9 +96,36 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
         XCTAssertEqual(requests.count, 2)
     }
 
+    func testInvalid74ByteHTTPBodyNeverReachesCMAFProcessor() async throws {
+        let url = URL(string: "https://example.com/live-42.m4s")!
+        let badBody = Data(repeating: 0x41, count: 74)
+        let loader = TrackPipelineLoader(payloads: [url: badBody])
+        let processor = TrackPipelineProcessor()
+        let pipeline = DASHClearKeyTrackPipeline(
+            plan: makePlan(urls: [url]),
+            headers: [:],
+            loader: loader,
+            processor: processor,
+            incompleteSegmentRetryCount: 1
+        )
+
+        do {
+            _ = try await pipeline.processSegment(at: 0)
+            XCTFail("Expected invalid media response")
+        } catch {
+            XCTAssertEqual(
+                error as? DASHISOBMFFValidationError,
+                .invalidMediaSegment(bytes: 74)
+            )
+        }
+
+        XCTAssertEqual((await loader.requests()).count, 2)
+        XCTAssertTrue((await processor.payloads()).isEmpty)
+    }
+
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
         let url = URL(string: "https://example.com/seg-1.m4s")!
-        let loader = TrackPipelineLoader(payloads: [url: Data([0x01])])
+        let loader = TrackPipelineLoader(payloads: [url: minimalMediaSegment(marker: 0x01)])
         let pipeline = DASHClearKeyTrackPipeline(
             plan: makePlan(urls: [url]),
             headers: [:],
@@ -233,6 +265,13 @@ private func makeParsedMediaSegment(index: Int) -> ParsedMediaSegment {
         isChunkedSegment: false,
         firstSampleIsSyncSample: true
     )
+}
+
+private func minimalMediaSegment(marker: UInt8) -> Data {
+    Data([
+        0x00, 0x00, 0x00, 0x09, 0x6d, 0x6f, 0x6f, 0x66, marker,
+        0x00, 0x00, 0x00, 0x08, 0x6d, 0x64, 0x61, 0x74
+    ])
 }
 
 private enum TrackPipelineTestError: Error {
