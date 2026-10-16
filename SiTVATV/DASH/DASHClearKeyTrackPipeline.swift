@@ -66,15 +66,21 @@ struct DASHClearKeyTrackPipeline {
         var retry = 0
         while true {
             try Task.checkCancellation()
-            let data = try await loader.loadData(
-                from: segment.url,
-                headers: headers,
-                byteRange: segment.byteRange
-            )
-
             do {
+                let data = try await loader.loadData(
+                    from: segment.url,
+                    headers: headers,
+                    byteRange: segment.byteRange
+                )
                 try bmffValidator.validateMediaSegment(data)
                 return try await processor.process(segmentData: data)
+            } catch let error as DASHResourceLoaderError {
+                guard case .incompleteByteRange = error,
+                      retry < incompleteSegmentRetryCount else {
+                    throw error
+                }
+                retry += 1
+                try await backoff(retry)
             } catch let error as DASHISOBMFFValidationError {
                 guard retry < incompleteSegmentRetryCount else {
                     throw error
