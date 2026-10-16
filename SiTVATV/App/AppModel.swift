@@ -205,6 +205,10 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         do {
             try await startPlayback(channel)
+        } catch let error as PlayerEngineError where error == .stopped {
+            return
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -229,6 +233,10 @@ final class AppModel: ObservableObject {
             do {
                 try await startPlayback(candidate)
                 return
+            } catch let error as PlayerEngineError where error == .stopped {
+                return
+            } catch is CancellationError {
+                return
             } catch {
                 lastError = error
             }
@@ -238,13 +246,24 @@ final class AppModel: ObservableObject {
     }
 
     func resumeDASHPlayback() async {
-        guard activeAttempt?.engine == .dashClearKey else { return }
+        guard activeAttempt?.engine == .dashClearKey,
+              let channelID = activeChannel?.id else {
+            return
+        }
 
         do {
             try await dashClearKeyEngine.resumePlayback()
         } catch let error as PlayerEngineError where error == .stopped {
             return
+        } catch is CancellationError {
+            return
         } catch {
+            // The DASH view task is cancelled whenever the user switches away.
+            // Never let a stale DASH error stop the new AVPlayer/VLC channel.
+            guard activeAttempt?.engine == .dashClearKey,
+                  activeChannel?.id == channelID else {
+                return
+            }
             errorMessage = error.localizedDescription
             await stopPlayback()
         }
