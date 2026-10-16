@@ -2,10 +2,14 @@ import XCTest
 @testable import SiTVATV
 
 final class DASHByteRangeResourceLoaderTests: XCTestCase {
-    func testRangeRequestUsesHTTPRangeAndAccepts206Body() async throws {
+    func testRangeRequestUsesHTTPRangeAndAcceptsExact206Body() async throws {
         let url = URL(string: "https://example.com/video.mp4")!
         let body = Data([10, 11, 12, 13])
-        let client = ByteRangeHTTPClient(data: body, statusCode: 206)
+        let client = ByteRangeHTTPClient(
+            data: body,
+            statusCode: 206,
+            headerFields: ["Content-Range": "bytes 100-103/1000"]
+        )
         let loader = DASHResourceLoader(client: client)
 
         let data = try await loader.loadData(
@@ -19,6 +23,54 @@ final class DASHByteRangeResourceLoaderTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Range"), "bytes=100-103")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Referer"), "https://example.com/")
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+    }
+
+    func testCoalesced206RangeSlicesRequestedOffsets() async throws {
+        let url = URL(string: "https://example.com/video.mp4")!
+        let body = Data([8, 9, 10, 11, 12, 13, 14, 15])
+        let client = ByteRangeHTTPClient(
+            data: body,
+            statusCode: 206,
+            headerFields: ["Content-Range": "bytes 98-105/1000"]
+        )
+        let loader = DASHResourceLoader(client: client)
+
+        let data = try await loader.loadData(
+            from: url,
+            headers: [:],
+            byteRange: DASHByteRange(start: 100, end: 103)
+        )
+
+        XCTAssertEqual(data, Data([10, 11, 12, 13]))
+    }
+
+    func testRejects206FromWrongOffset() async {
+        let url = URL(string: "https://example.com/video.mp4")!
+        let client = ByteRangeHTTPClient(
+            data: Data([1, 2, 3, 4]),
+            statusCode: 206,
+            headerFields: ["Content-Range": "bytes 200-203/1000"]
+        )
+        let loader = DASHResourceLoader(client: client)
+
+        do {
+            _ = try await loader.loadData(
+                from: url,
+                headers: [:],
+                byteRange: DASHByteRange(start: 100, end: 103)
+            )
+            XCTFail("Expected mismatched content range")
+        } catch {
+            XCTAssertEqual(
+                error as? DASHResourceLoaderError,
+                .mismatchedContentRange(
+                    expectedStart: 100,
+                    expectedEnd: 103,
+                    actualStart: 200,
+                    actualEnd: 203
+                )
+            )
+        }
     }
 
     func testServerIgnoringRangeSlicesFull200Response() async throws {
@@ -60,11 +112,17 @@ final class DASHByteRangeResourceLoaderTests: XCTestCase {
 private final class ByteRangeHTTPClient: DASHHTTPClient {
     let data: Data
     let statusCode: Int
+    let headerFields: [String: String]
     private(set) var requests: [URLRequest] = []
 
-    init(data: Data, statusCode: Int) {
+    init(
+        data: Data,
+        statusCode: Int,
+        headerFields: [String: String] = [:]
+    ) {
         self.data = data
         self.statusCode = statusCode
+        self.headerFields = headerFields
     }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -73,7 +131,7 @@ private final class ByteRangeHTTPClient: DASHHTTPClient {
             url: request.url!,
             statusCode: statusCode,
             httpVersion: "HTTP/1.1",
-            headerFields: [:]
+            headerFields: headerFields
         )!
         return (data, response)
     }
