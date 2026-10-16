@@ -12,6 +12,9 @@ struct ContentView: View {
     @State private var favoriteNotice: FavoriteNotice?
     @FocusState private var focusTarget: FocusTarget?
 
+    private let panelVisibleSeconds: Double = 8
+    private let infoVisibleSeconds: Double = 8
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             playbackBackground
@@ -20,15 +23,19 @@ struct ContentView: View {
                 setupState
             }
 
-            if infoVisible, let channel = model.activeChannel, panel == .hidden, favoritePromptChannelID == nil {
+            if infoVisible,
+               let channel = model.activeChannel,
+               panel == .hidden,
+               favoritePromptChannelID == nil {
                 nowPlaying(channel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(24)
+                    .padding(.top, 34)
+                    .padding(.trailing, 42)
                     .allowsHitTesting(false)
 
                 brandOverlay
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(24)
+                    .padding(30)
                     .allowsHitTesting(false)
             }
 
@@ -38,7 +45,9 @@ struct ContentView: View {
                     .zIndex(20)
             }
 
-            if panel == .hidden, !model.channels.isEmpty, favoritePromptChannelID == nil {
+            if panel == .hidden,
+               !model.channels.isEmpty,
+               favoritePromptChannelID == nil {
                 remoteCapture
                     .zIndex(30)
             }
@@ -54,8 +63,8 @@ struct ContentView: View {
             if model.isLoading {
                 ProgressView()
                     .controlSize(.large)
-                    .padding(28)
-                    .background(SiTVTheme.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 18))
+                    .padding(30)
+                    .background(SiTVTheme.cardStrong, in: RoundedRectangle(cornerRadius: 20))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
                     .zIndex(40)
@@ -99,12 +108,8 @@ struct ContentView: View {
                 showChannelPanel()
             }
         }
-        .onChange(of: focusTarget) { _, target in
-            guard panel != .hidden else { return }
-            switch target {
-            case .settings, .refresh:
-                panelHideTask?.cancel()
-            default:
+        .onChange(of: focusTarget) { _, _ in
+            if panel != .hidden {
                 schedulePanelHide()
             }
         }
@@ -125,16 +130,16 @@ struct ContentView: View {
     }
 
     private var setupState: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 24) {
             SiTVLogoMark()
-                .frame(width: 92, height: 92)
+                .frame(width: 112, height: 112)
 
             Text("SiTV")
-                .font(.largeTitle.bold())
+                .font(.system(size: 46, weight: .bold))
                 .foregroundStyle(SiTVTheme.text)
 
             Text(model.activeSource.isConfigured ? "Chưa có danh sách kênh" : "Chưa cấu hình nguồn IPTV")
-                .font(.title3)
+                .font(.system(size: 22, weight: .medium))
                 .foregroundStyle(SiTVTheme.textDim)
 
             Button {
@@ -142,9 +147,13 @@ struct ContentView: View {
                 showSettings = true
             } label: {
                 Label("Nguồn IPTV", systemImage: "slider.horizontal.3")
+                    .font(.system(size: 20, weight: .bold))
+                    .padding(.horizontal, 24)
+                    .frame(height: 60)
+                    .background(SiTVTheme.orange, in: RoundedRectangle(cornerRadius: 16))
             }
-            .buttonStyle(.borderedProminent)
-            .tint(SiTVTheme.orange)
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -153,11 +162,17 @@ struct ContentView: View {
         Color.clear
             .contentShape(Rectangle())
             .focusable()
+            .focusEffectDisabled()
             .focused($focusTarget, equals: .player)
             .onMoveCommand { direction in
                 handlePlayerMove(direction)
             }
             .onPlayPauseCommand {
+                showChannelPanel()
+            }
+            .onExitCommand {
+                // MENU / Back while watching must reveal the channel list rather
+                // than allowing tvOS to leave the app immediately.
                 showChannelPanel()
             }
     }
@@ -166,30 +181,34 @@ struct ContentView: View {
         HStack(spacing: 0) {
             if panel == .sources {
                 sourcePanel
-                    .frame(width: 230)
+                    .frame(width: 300)
                     .transition(.move(edge: .leading))
             }
 
             if panel == .groups || panel == .sources {
                 groupPanel
-                    .frame(width: 250)
+                    .frame(width: 320)
                     .transition(.move(edge: .leading))
             }
 
             channelPanel
-                .frame(width: 430)
+                .frame(width: 560)
         }
         .frame(maxHeight: .infinity)
-        .animation(.easeOut(duration: 0.16), value: panel)
+        .animation(.easeOut(duration: 0.18), value: panel)
     }
 
     private var sourcePanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            panelHeader("Nguồn IPTV", subtitle: "↑ ↓ chọn nguồn  •  OK tải  •  → quay lại")
+        VStack(alignment: .leading, spacing: 18) {
+            panelHeader("Nguồn IPTV", subtitle: "↑ ↓ chọn nguồn  •  OK tải  •  → nhóm")
 
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 12) {
                     ForEach(configuredSources) { source in
+                        let target = FocusTarget.source(source.slot)
+                        let focused = focusTarget == target
+                        let selected = source.slot == model.activeSource.slot
+
                         Button {
                             touchPanel()
                             Task {
@@ -201,43 +220,47 @@ struct ContentView: View {
                                 }
                             }
                         } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: source.slot == model.activeSource.slot ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(source.slot == model.activeSource.slot ? SiTVTheme.orange : SiTVTheme.textDim)
-                                VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 14) {
+                                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundStyle(selected ? SiTVTheme.orange : SiTVTheme.textDim)
+
+                                VStack(alignment: .leading, spacing: 5) {
                                     Text(source.name.isEmpty ? "Nguồn \(source.slot + 1)" : source.name)
-                                        .lineLimit(1)
+                                        .font(.system(size: 20, weight: .bold))
                                         .foregroundStyle(SiTVTheme.text)
+                                        .lineLimit(1)
                                     Text(source.url)
-                                        .font(.caption2)
+                                        .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(SiTVTheme.textDim)
                                         .lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-                            .background(sourceBackground(source))
+                            .padding(.horizontal, 16)
+                            .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+                            .background(cardBackground(focused: focused, selected: selected, radius: 18))
                         }
                         .buttonStyle(.plain)
-                        .scaleEffect(focusTarget == .source(source.slot) ? 1.025 : 1)
-                        .focused($focusTarget, equals: .source(source.slot))
+                        .focusEffectDisabled()
+                        .focused($focusTarget, equals: target)
                         .onMoveCommand { direction in
                             handleSourceMove(direction, slot: source.slot)
                         }
                     }
                 }
-                .padding(4)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 4)
             }
 
             Text("@2026 SolYan-SiTV")
-                .font(.caption2)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(SiTVTheme.textDim)
                 .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 22)
-        .padding(.bottom, 18)
+        .padding(.horizontal, 18)
+        .padding(.top, 32)
+        .padding(.bottom, 22)
         .background(SiTVTheme.sourcePanel)
         .onExitCommand {
             showGroupPanel()
@@ -245,48 +268,59 @@ struct ContentView: View {
     }
 
     private var groupPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            panelHeader("Nhóm kênh", subtitle: "← nguồn IPTV  •  ↑ ↓ chọn  •  → quay lại")
+        VStack(alignment: .leading, spacing: 18) {
+            panelHeader("Nhóm kênh", subtitle: "← nguồn  •  ↑ ↓ chọn  •  → kênh")
 
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 12) {
                     ForEach(model.groups, id: \.self) { group in
+                        let target = FocusTarget.group(group)
+                        let focused = focusTarget == target
+                        let selected = model.selectedGroup == group
+
                         Button {
                             touchPanel()
                             model.selectGroup(group)
                             panel = .channels
                             focusCurrentChannel()
                         } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: group == "KÊNH YÊU THÍCH ♥" ? "heart.fill" : "square.grid.2x2")
-                                    .frame(width: 24)
+                            HStack(spacing: 14) {
+                                Image(systemName: group == "KÊNH YÊU THÍCH ♥" ? "heart.fill" : "square.grid.2x2.fill")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundStyle(group == "KÊNH YÊU THÍCH ♥" ? .red : SiTVTheme.orange)
+                                    .frame(width: 32)
+
                                 Text(group)
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundStyle(SiTVTheme.text)
                                     .lineLimit(1)
-                                Spacer(minLength: 6)
+
+                                Spacer(minLength: 8)
+
                                 Text("\(channelCount(for: group))")
-                                    .font(.caption.monospacedDigit())
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(SiTVTheme.textDim)
+                                    .fixedSize()
                             }
-                            .foregroundStyle(groupForeground(group))
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(groupBackground(group))
+                            .padding(.horizontal, 16)
+                            .frame(maxWidth: .infinity, minHeight: 68)
+                            .background(cardBackground(focused: focused, selected: selected, radius: 18))
                         }
                         .buttonStyle(.plain)
-                        .scaleEffect(focusTarget == .group(group) ? 1.025 : 1)
-                        .focused($focusTarget, equals: .group(group))
+                        .focusEffectDisabled()
+                        .focused($focusTarget, equals: target)
                         .onMoveCommand { direction in
                             handleGroupMove(direction, group: group)
                         }
                     }
                 }
-                .padding(4)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 4)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 22)
-        .padding(.bottom, 18)
+        .padding(.horizontal, 18)
+        .padding(.top, 32)
+        .padding(.bottom, 22)
         .background(SiTVTheme.groupPanel)
         .onExitCommand {
             showChannelPanel()
@@ -294,24 +328,25 @@ struct ContentView: View {
     }
 
     private var channelPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
                 SiTVLogoMark()
-                    .frame(width: 52, height: 52)
+                    .frame(width: 68, height: 68)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("SiTV")
-                        .font(.system(size: 25, weight: .bold))
+                        .font(.system(size: 31, weight: .bold))
                         .foregroundStyle(SiTVTheme.text)
                     Text(model.activeSource.name.isEmpty ? "Nguồn IPTV" : model.activeSource.name)
-                        .font(.caption2)
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(SiTVTheme.textDim)
                         .lineLimit(1)
                 }
+                Spacer(minLength: 0)
             }
-            .frame(height: 58)
+            .frame(height: 76)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 actionButton(title: "Làm mới", systemImage: "arrow.clockwise", target: .refresh) {
                     Task {
                         await model.loadPlaylist()
@@ -332,82 +367,84 @@ struct ContentView: View {
                     handleTopActionMove(direction, target: .settings)
                 }
             }
-            .frame(height: 44)
+            .frame(height: 58)
 
-            Text("Danh sách kênh  •  ← nhóm kênh")
-                .font(.caption)
-                .foregroundStyle(SiTVTheme.textDim)
-                .padding(.leading, 8)
+            HStack {
+                Text("DANH SÁCH KÊNH")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(SiTVTheme.textDim)
+                Spacer()
+                Text("← Nhóm kênh")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(SiTVTheme.orange.opacity(0.92))
+            }
+            .padding(.horizontal, 8)
 
             if model.visibleChannels.isEmpty {
-                VStack(spacing: 14) {
+                VStack(spacing: 18) {
                     Spacer()
-                    Text(model.isFavoritesSelected ? "Chưa có kênh yêu thích" : "Nhóm này chưa có kênh")
+                    Image(systemName: "tv.slash")
+                        .font(.system(size: 46))
                         .foregroundStyle(SiTVTheme.textDim)
-                    Button("Cài đặt nguồn") {
-                        openSettings()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SiTVTheme.orange)
+                    Text(model.isFavoritesSelected ? "Chưa có kênh yêu thích" : "Nhóm này chưa có kênh")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(SiTVTheme.textDim)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 10) {
                             ForEach(model.visibleChannels) { channel in
                                 channelRow(channel)
                                     .id(channel.id)
                             }
                         }
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 5)
                     }
                     .onChange(of: model.activeChannel?.id) { _, id in
                         guard let id else { return }
-                        withAnimation(.easeOut(duration: 0.12)) {
+                        withAnimation(.easeOut(duration: 0.14)) {
                             proxy.scrollTo(id, anchor: .center)
                         }
                     }
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Text("\(model.visibleChannels.count)/\(model.channels.count) kênh")
                     .lineLimit(1)
-                Spacer(minLength: 8)
+                Spacer(minLength: 10)
                 if model.isPlaybackStarting, let channel = model.activeChannel {
-                    Text("Đang nạp · \(channel.name)")
+                    Label("Đang mở · \(channel.name)", systemImage: "hourglass")
                         .lineLimit(1)
                 } else if let attempt = model.activeAttempt {
                     Text("\(attempt.engine.rawValue) · nguồn \(attempt.sourceIndex + 1)")
                         .lineLimit(1)
                 }
             }
-            .font(.caption2)
+            .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(SiTVTheme.textDim)
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 18)
+        .padding(.horizontal, 24)
+        .padding(.top, 26)
+        .padding(.bottom, 22)
         .background(
             UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
-                bottomTrailingRadius: 24,
-                topTrailingRadius: 24
+                bottomTrailingRadius: 30,
+                topTrailingRadius: 30
             )
             .fill(SiTVTheme.panel)
         )
         .overlay(alignment: .trailing) {
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 24,
-                topTrailingRadius: 24
-            )
-            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+            Rectangle()
+                .fill(SiTVTheme.orange.opacity(0.75))
+                .frame(width: 2)
         }
         .onPlayPauseCommand {
             openSettings()
@@ -432,58 +469,66 @@ struct ContentView: View {
                 }
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 15) {
                 Text(channelNumberText(channel))
-                    .font(.system(size: 19, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 21, weight: .bold, design: .monospaced))
                     .foregroundStyle(SiTVTheme.orange)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .fixedSize(horizontal: true, vertical: false)
-                    .frame(width: 48, alignment: .leading)
+                    .frame(width: 54, alignment: .leading)
 
-                AsyncImage(url: channel.logoURL.flatMap(URL.init(string:))) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    Image(systemName: "tv")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(SiTVTheme.textDim)
-                        .padding(8)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.black.opacity(0.28))
+                    AsyncImage(url: channel.logoURL.flatMap(URL.init(string:))) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        Image(systemName: "tv")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(SiTVTheme.textDim)
+                            .padding(14)
+                    }
+                    .padding(6)
                 }
-                .frame(width: 62, height: 46)
+                .frame(width: 92, height: 64)
                 .clipped()
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(channel.name)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(SiTVTheme.text)
                         .lineLimit(1)
                     Text(channel.group)
-                        .font(.system(size: 12))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(SiTVTheme.textDim)
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 5)
 
                 if model.isFavorite(channel) {
                     Image(systemName: "heart.fill")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(.system(size: 17, weight: .bold))
                 }
 
                 if selected {
-                    Image(systemName: "play.fill")
-                        .foregroundStyle(SiTVTheme.orange)
-                        .font(.caption)
+                    ZStack {
+                        Circle().fill(SiTVTheme.orange.opacity(0.18))
+                        Image(systemName: "play.fill")
+                            .foregroundStyle(SiTVTheme.orange)
+                            .font(.system(size: 17, weight: .bold))
+                            .offset(x: 1)
+                    }
+                    .frame(width: 38, height: 38)
                 }
             }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 74)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 94)
             .background(channelBackground(focused: focused, selected: selected))
         }
         .buttonStyle(.plain)
-        .scaleEffect(focused ? 1.02 : 1)
+        .focusEffectDisabled()
         .focused($focusTarget, equals: target)
         .onMoveCommand { direction in
             handleChannelMove(direction, channel: channel)
@@ -499,16 +544,13 @@ struct ContentView: View {
         let focused = focusTarget == target
         return Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(SiTVTheme.text)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(
-                    focused ? SiTVTheme.orange : SiTVTheme.button,
-                    in: RoundedRectangle(cornerRadius: 12)
-                )
+                .background(cardBackground(focused: focused, selected: false, radius: 16))
         }
         .buttonStyle(.plain)
-        .scaleEffect(focused ? 1.025 : 1)
+        .focusEffectDisabled()
         .focused($focusTarget, equals: target)
     }
 
@@ -520,10 +562,11 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .focused($focusTarget, equals: .favoritePrompt)
         .overlay(alignment: .topTrailing) {
             favoriteBanner(heartColor: .white, text: "Lưu kênh yêu thích")
-                .padding(24)
+                .padding(34)
                 .allowsHitTesting(false)
         }
         .onMoveCommand { direction in
@@ -544,63 +587,91 @@ struct ContentView: View {
     private func favoriteNoticeOverlay(_ notice: FavoriteNotice) -> some View {
         favoriteBanner(heartColor: notice.heartColor, text: notice.text)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(24)
+            .padding(34)
             .allowsHitTesting(false)
     }
 
     private func favoriteBanner(heartColor: Color, text: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: "heart.fill")
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(heartColor)
             Text(text)
-                .font(.title3.bold())
+                .font(.system(size: 23, weight: .bold))
                 .foregroundStyle(SiTVTheme.text)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(SiTVTheme.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .background(SiTVTheme.overlay, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        }
     }
 
     private func nowPlaying(_ channel: Channel) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            Text(model.activeChannelNumber.map { String(format: "%02d", $0) } ?? "--")
-                .font(.system(size: 46, weight: .bold, design: .rounded))
-                .foregroundStyle(SiTVTheme.orange)
-                .lineLimit(1)
-            Text(channel.name)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(SiTVTheme.text)
-                .lineLimit(1)
-            Text(channel.group)
-                .font(.system(size: 13))
-                .foregroundStyle(SiTVTheme.textDim)
-                .lineLimit(1)
+        HStack(spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.black.opacity(0.30))
+                AsyncImage(url: channel.logoURL.flatMap(URL.init(string:))) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Image(systemName: "tv")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(SiTVTheme.textDim)
+                        .padding(18)
+                }
+                .padding(7)
+            }
+            .frame(width: 108, height: 76)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(model.activeChannelNumber.map { String(format: "%02d", $0) } ?? "--")
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(SiTVTheme.orange)
+                    Text(channel.name)
+                        .font(.system(size: 25, weight: .bold))
+                        .foregroundStyle(SiTVTheme.text)
+                        .lineLimit(1)
+                }
+
+                Text(channel.group)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(SiTVTheme.textDim)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(SiTVTheme.black.opacity(0.66), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 22)
+        .padding(.vertical, 17)
+        .frame(minWidth: 430, alignment: .leading)
+        .background(SiTVTheme.overlay, in: RoundedRectangle(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        }
     }
 
     private var brandOverlay: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             SiTVLogoMark()
-                .frame(width: 42, height: 42)
+                .frame(width: 48, height: 48)
             Text("SiTV")
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 19, weight: .bold))
                 .foregroundStyle(SiTVTheme.text)
         }
-        .frame(width: 96, height: 50)
-        .opacity(0.8)
+        .opacity(0.82)
     }
 
     private func panelHeader(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 21, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(SiTVTheme.text)
             Text(subtitle)
-                .font(.system(size: 11))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(SiTVTheme.textDim)
         }
     }
@@ -610,9 +681,15 @@ struct ContentView: View {
         case .left:
             showChannelPanel()
         case .up:
-            Task { await model.stepChannel(1) }
+            Task {
+                await model.stepChannel(1)
+                await MainActor.run { showNowInfo() }
+            }
         case .down:
-            Task { await model.stepChannel(-1) }
+            Task {
+                await model.stepChannel(-1)
+                await MainActor.run { showNowInfo() }
+            }
         case .right:
             beginFavoritePrompt()
         default:
@@ -621,7 +698,7 @@ struct ContentView: View {
     }
 
     private func handleTopActionMove(_ direction: MoveCommandDirection, target: FocusTarget) {
-        panelHideTask?.cancel()
+        touchPanel()
         switch (target, direction) {
         case (.refresh, .right):
             focusTarget = .settings
@@ -642,7 +719,6 @@ struct ContentView: View {
             if index > 0 {
                 focusTarget = .channel(model.visibleChannels[index - 1].id)
             } else {
-                panelHideTask?.cancel()
                 focusTarget = .refresh
             }
         case .down:
@@ -738,17 +814,14 @@ struct ContentView: View {
 
     private func schedulePanelHide() {
         panelHideTask?.cancel()
-        if focusTarget == .settings || focusTarget == .refresh || showSettings {
-            return
-        }
+        guard !showSettings else { return }
         panelHideTask = Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(panelVisibleSeconds))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                if !showSettings, focusTarget != .settings, focusTarget != .refresh {
-                    panel = .hidden
-                    restorePlayerFocus()
-                }
+                guard !showSettings else { return }
+                panel = .hidden
+                restorePlayerFocus()
             }
         }
     }
@@ -757,7 +830,7 @@ struct ContentView: View {
         infoHideTask?.cancel()
         infoVisible = true
         infoHideTask = Task {
-            try? await Task.sleep(for: .milliseconds(2_500))
+            try? await Task.sleep(for: .seconds(infoVisibleSeconds))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 infoVisible = false
@@ -802,7 +875,7 @@ struct ContentView: View {
         restorePlayerFocus()
         infoHideTask?.cancel()
         infoHideTask = Task {
-            try? await Task.sleep(for: .milliseconds(2_500))
+            try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 favoriteNotice = nil
@@ -819,7 +892,6 @@ struct ContentView: View {
             if let target {
                 focusTarget = .channel(target.id)
             } else {
-                panelHideTask?.cancel()
                 focusTarget = .settings
             }
         }
@@ -858,39 +930,34 @@ struct ContentView: View {
     }
 
     private func channelBackground(focused: Bool, selected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 14)
+        RoundedRectangle(cornerRadius: 19)
             .fill(focused ? SiTVTheme.cardFocus : (selected ? SiTVTheme.cardSelected : SiTVTheme.card))
+            .overlay(alignment: .leading) {
+                if selected {
+                    Capsule()
+                        .fill(SiTVTheme.orange)
+                        .frame(width: 5, height: 54)
+                        .padding(.leading, 3)
+                }
+            }
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 19)
                     .stroke(
-                        focused ? SiTVTheme.orange : (selected ? SiTVTheme.orange.opacity(0.6) : Color.clear),
-                        lineWidth: focused ? 2 : (selected ? 1 : 0)
+                        focused ? SiTVTheme.orange : (selected ? SiTVTheme.orange.opacity(0.55) : SiTVTheme.border),
+                        lineWidth: focused ? 3 : 1
                     )
             }
     }
 
-    private func groupBackground(_ group: String) -> some View {
-        let focused = focusTarget == .group(group)
-        let selected = model.selectedGroup == group
-        return RoundedRectangle(cornerRadius: 18)
-            .fill(focused ? SiTVTheme.orange : (selected ? SiTVTheme.groupSelected : SiTVTheme.groupCard))
+    private func cardBackground(focused: Bool, selected: Bool, radius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(focused ? SiTVTheme.cardFocus : (selected ? SiTVTheme.cardSelected : SiTVTheme.card))
             .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(selected && !focused ? SiTVTheme.orange : Color.clear, lineWidth: 1)
-            }
-    }
-
-    private func groupForeground(_ group: String) -> Color {
-        focusTarget == .group(group) ? SiTVTheme.black : SiTVTheme.text
-    }
-
-    private func sourceBackground(_ source: PlaylistSource) -> some View {
-        let focused = focusTarget == .source(source.slot)
-        return RoundedRectangle(cornerRadius: 14)
-            .fill(focused ? SiTVTheme.cardFocus : SiTVTheme.card)
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(focused ? SiTVTheme.orange : Color.clear, lineWidth: 2)
+                RoundedRectangle(cornerRadius: radius)
+                    .stroke(
+                        focused ? SiTVTheme.orange : (selected ? SiTVTheme.orange.opacity(0.55) : SiTVTheme.border),
+                        lineWidth: focused ? 3 : 1
+                    )
             }
     }
 }
@@ -929,16 +996,16 @@ private enum FavoriteNotice {
 }
 
 private enum SiTVTheme {
-    static let black = Color(red: 8 / 255, green: 10 / 255, blue: 13 / 255)
-    static let panel = Color(red: 20 / 255, green: 23 / 255, blue: 28 / 255).opacity(0.91)
-    static let sourcePanel = Color(red: 13 / 255, green: 16 / 255, blue: 20 / 255).opacity(0.94)
-    static let groupPanel = Color(red: 17 / 255, green: 20 / 255, blue: 25 / 255).opacity(0.93)
-    static let card = Color(red: 34 / 255, green: 38 / 255, blue: 45 / 255).opacity(0.80)
-    static let cardFocus = Color(red: 56 / 255, green: 62 / 255, blue: 72 / 255).opacity(0.95)
-    static let cardSelected = Color(red: 44 / 255, green: 49 / 255, blue: 57 / 255).opacity(0.84)
-    static let groupCard = Color(red: 42 / 255, green: 47 / 255, blue: 55 / 255).opacity(0.65)
-    static let groupSelected = Color(red: 77 / 255, green: 85 / 255, blue: 97 / 255).opacity(0.70)
-    static let button = Color(red: 52 / 255, green: 58 / 255, blue: 68 / 255).opacity(0.80)
+    static let black = Color(red: 6 / 255, green: 8 / 255, blue: 11 / 255)
+    static let panel = Color(red: 13 / 255, green: 17 / 255, blue: 22 / 255).opacity(0.97)
+    static let sourcePanel = Color(red: 9 / 255, green: 12 / 255, blue: 16 / 255).opacity(0.985)
+    static let groupPanel = Color(red: 11 / 255, green: 14 / 255, blue: 19 / 255).opacity(0.98)
+    static let card = Color(red: 28 / 255, green: 33 / 255, blue: 41 / 255).opacity(0.90)
+    static let cardStrong = Color(red: 24 / 255, green: 29 / 255, blue: 36 / 255).opacity(0.98)
+    static let cardFocus = Color(red: 39 / 255, green: 46 / 255, blue: 57 / 255).opacity(0.99)
+    static let cardSelected = Color(red: 34 / 255, green: 40 / 255, blue: 49 / 255).opacity(0.96)
+    static let overlay = Color(red: 8 / 255, green: 11 / 255, blue: 15 / 255).opacity(0.88)
+    static let border = Color.white.opacity(0.08)
     static let orange = Color(red: 1, green: 138 / 255, blue: 42 / 255)
     static let text = Color(red: 1, green: 247 / 255, blue: 244 / 255)
     static let textDim = Color(red: 174 / 255, green: 183 / 255, blue: 194 / 255)
@@ -946,15 +1013,19 @@ private enum SiTVTheme {
 
 private struct SiTVLogoMark: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(SiTVTheme.orange)
-            Image(systemName: "play.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 0.36 * 52, height: 0.36 * 52)
-                .foregroundStyle(.white)
-                .offset(x: 2)
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            ZStack {
+                Circle()
+                    .fill(SiTVTheme.orange)
+                Image(systemName: "play.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: side * 0.38, height: side * 0.38)
+                    .foregroundStyle(.white)
+                    .offset(x: side * 0.035)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .aspectRatio(1, contentMode: .fit)
     }
