@@ -8,13 +8,21 @@ protocol ClearKeyLicenseLoading: Sendable {
     ) async throws -> ClearKeyMaterial
 }
 
+protocol ClearKeyLicenseCollectionLoading: ClearKeyLicenseLoading {
+    func materials(
+        from licenseURL: URL,
+        keyIDs: [Data],
+        headers: [String: String]
+    ) async throws -> [ClearKeyMaterial]
+}
+
 enum ClearKeyLicenseError: Error, Equatable, Sendable {
     case invalidResponse
     case httpStatus(Int)
     case keyNotReturned
 }
 
-struct URLSessionClearKeyLicenseClient: ClearKeyLicenseLoading {
+struct URLSessionClearKeyLicenseClient: ClearKeyLicenseCollectionLoading {
     private let session: URLSession
 
     init(session: URLSession = .shared) {
@@ -26,9 +34,26 @@ struct URLSessionClearKeyLicenseClient: ClearKeyLicenseLoading {
         keyID: Data,
         headers: [String: String]
     ) async throws -> ClearKeyMaterial {
-        let kid = ClearKeyJWKParser.encodeBase64URL(keyID)
+        let values = try await materials(
+            from: licenseURL,
+            keyIDs: [keyID],
+            headers: headers
+        )
+        guard let material = values.first(where: { $0.keyID == keyID }) else {
+            throw ClearKeyLicenseError.keyNotReturned
+        }
+        return material
+    }
+
+    func materials(
+        from licenseURL: URL,
+        keyIDs: [Data],
+        headers: [String: String]
+    ) async throws -> [ClearKeyMaterial] {
+        let uniqueKeyIDs = Array(Set(keyIDs))
+        let kids = uniqueKeyIDs.map(ClearKeyJWKParser.encodeBase64URL)
         let payload: [String: Any] = [
-            "kids": [kid],
+            "kids": kids,
             "type": "temporary"
         ]
 
@@ -51,9 +76,11 @@ struct URLSessionClearKeyLicenseClient: ClearKeyLicenseLoading {
         }
 
         let materials = try ClearKeyJWKParser.materials(from: data)
-        guard let material = materials.first(where: { $0.keyID == keyID }) else {
+        let allowed = Set(uniqueKeyIDs)
+        let matching = materials.filter { allowed.contains($0.keyID) }
+        guard !matching.isEmpty else {
             throw ClearKeyLicenseError.keyNotReturned
         }
-        return material
+        return matching
     }
 }
