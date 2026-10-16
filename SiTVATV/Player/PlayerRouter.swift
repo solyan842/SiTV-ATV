@@ -34,6 +34,13 @@ struct PlayerRouter: Sendable {
             return [.avPlayer, .vlc]
         }
 
+        // Direct MPEG-TS/UDP/RTSP feeds are a much better fit for VLCKit.
+        // Trying AVPlayer first can otherwise burn the whole startup timeout
+        // before falling back, which makes normal channel changes feel slow.
+        if prefersVLC(url: url) {
+            return [.vlc, .avPlayer]
+        }
+
         return [.avPlayer, .vlc]
     }
 
@@ -61,5 +68,15 @@ struct PlayerRouter: Sendable {
 
     private func isFairPlay(_ drm: String) -> Bool {
         drm.contains("fairplay") || drm.contains("com.apple.fps") || drm.contains("skd")
+    }
+
+    private func prefersVLC(url: String) -> Bool {
+        guard let parsed = URL(string: url) else { return false }
+        let scheme = parsed.scheme?.lowercased() ?? ""
+        if ["udp", "rtp", "rtsp", "rtmp"].contains(scheme) {
+            return true
+        }
+        let path = parsed.path.lowercased()
+        return path.hasSuffix(".ts") || path.hasSuffix(".mpegts") || path.hasSuffix(".mpeg")
     }
 }
