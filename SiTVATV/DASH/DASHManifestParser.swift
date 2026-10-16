@@ -93,6 +93,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
 
     private struct PeriodBuilder {
         var id: String?
+        var start: TimeInterval?
         var baseURLText: String?
         var adaptations: [AdaptationBuilder] = []
     }
@@ -108,6 +109,10 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
 
     private var manifestType: DASHManifest.ManifestType = .static
     private var minimumUpdatePeriod: TimeInterval?
+    private var availabilityStartTime: Date?
+    private var publishTime: Date?
+    private var timeShiftBufferDepth: TimeInterval?
+    private var suggestedPresentationDelay: TimeInterval?
     private var manifestBaseURLText: String?
     private var periods: [PeriodBuilder] = []
 
@@ -144,9 +149,16 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
             if let raw = attributeDict["minimumUpdatePeriod"] {
                 minimumUpdatePeriod = Self.parseISODuration(raw)
             }
+            availabilityStartTime = attributeDict["availabilityStartTime"].flatMap(Self.parseISODate)
+            publishTime = attributeDict["publishTime"].flatMap(Self.parseISODate)
+            timeShiftBufferDepth = attributeDict["timeShiftBufferDepth"].flatMap(Self.parseISODuration)
+            suggestedPresentationDelay = attributeDict["suggestedPresentationDelay"].flatMap(Self.parseISODuration)
 
         case "Period":
-            currentPeriod = PeriodBuilder(id: attributeDict["id"])
+            currentPeriod = PeriodBuilder(
+                id: attributeDict["id"],
+                start: attributeDict["start"].flatMap(Self.parseISODuration)
+            )
 
         case "AdaptationSet":
             currentAdaptation = AdaptationBuilder(
@@ -366,14 +378,23 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
                     representations: representations
                 )
             }
-            return DASHPeriod(id: period.id, baseURL: periodBaseURL, adaptationSets: adaptations)
+            return DASHPeriod(
+                id: period.id,
+                baseURL: periodBaseURL,
+                adaptationSets: adaptations,
+                start: period.start
+            )
         }
 
         return DASHManifest(
             type: manifestType,
             minimumUpdatePeriod: minimumUpdatePeriod,
             baseURL: rootBaseURL,
-            periods: resolvedPeriods
+            periods: resolvedPeriods,
+            availabilityStartTime: availabilityStartTime,
+            publishTime: publishTime,
+            timeShiftBufferDepth: timeShiftBufferDepth,
+            suggestedPresentationDelay: suggestedPresentationDelay
         )
     }
 
@@ -410,6 +431,17 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
             cursor = end
         }
         return UUID(uuidString: groups.joined(separator: "-"))
+    }
+
+    private static func parseISODate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) {
+            return date
+        }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
     }
 
     private static func parseISODuration(_ value: String) -> TimeInterval? {
