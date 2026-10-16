@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     private let favoritesStore: FavoritesStore
     private let coordinator: PlayerCoordinator
     private let defaults: UserDefaults
+    private var backgroundedAt: Date?
 
     init(
         repository: PlaylistRepository = PlaylistRepository(),
@@ -258,14 +259,36 @@ final class AppModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            // The DASH view task is cancelled whenever the user switches away.
-            // Never let a stale DASH error stop the new AVPlayer/VLC channel.
             guard activeAttempt?.engine == .dashClearKey,
                   activeChannel?.id == channelID else {
                 return
             }
             errorMessage = error.localizedDescription
             await stopPlayback()
+        }
+    }
+
+    func appDidEnterBackground() {
+        backgroundedAt = Date()
+    }
+
+    func appDidBecomeActive() async {
+        guard backgroundedAt != nil else { return }
+        backgroundedAt = nil
+        guard let channel = activeChannel else { return }
+
+        // A live stream held while tvOS is on Home can be far behind the live
+        // window or leave its decoder/session suspended. Re-create the current
+        // playback path instead of resuming the stale frame.
+        errorMessage = nil
+        do {
+            try await startPlayback(channel)
+        } catch let error as PlayerEngineError where error == .stopped {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
