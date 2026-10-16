@@ -16,8 +16,19 @@ protocol ClearKeyProviding: Sendable {
     func material(for source: StreamSource) throws -> ClearKeyMaterial
 }
 
-struct PlaylistClearKeyProvider: ClearKeyProviding {
+protocol ClearKeyCollectionProviding: ClearKeyProviding {
+    func materials(for source: StreamSource) throws -> [ClearKeyMaterial]
+}
+
+struct PlaylistClearKeyProvider: ClearKeyCollectionProviding {
     func material(for source: StreamSource) throws -> ClearKeyMaterial {
+        guard let first = try materials(for: source).first else {
+            throw ClearKeyError.invalidFormat
+        }
+        return first
+    }
+
+    func materials(for source: StreamSource) throws -> [ClearKeyMaterial] {
         guard let raw = source.drmKey?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
             throw ClearKeyError.missingKey
@@ -28,26 +39,26 @@ struct PlaylistClearKeyProvider: ClearKeyProviding {
             guard let data = Data(base64Encoded: encoded) else {
                 throw ClearKeyError.invalidFormat
             }
-            return try ClearKeyJWKParser.materials(from: data).firstValue()
+            return try ClearKeyJWKParser.materials(from: data)
         }
 
         if raw.hasPrefix("{") {
             guard let data = raw.data(using: .utf8) else {
                 throw ClearKeyError.invalidFormat
             }
-            return try ClearKeyJWKParser.materials(from: data).firstValue()
+            return try ClearKeyJWKParser.materials(from: data)
         }
 
-        let firstEntry = raw
+        let entries = raw
             .split(separator: ",", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first(where: { !$0.isEmpty })
+            .filter { !$0.isEmpty }
 
-        guard let firstEntry else {
+        guard !entries.isEmpty else {
             throw ClearKeyError.invalidFormat
         }
 
-        return try Self.parseHexPair(firstEntry)
+        return try entries.map(Self.parseHexPair)
     }
 
     private static func parseHexPair(_ raw: String) throws -> ClearKeyMaterial {
@@ -136,14 +147,5 @@ enum ClearKeyJWKParser {
             normalized += String(repeating: "=", count: 4 - remainder)
         }
         return Data(base64Encoded: normalized)
-    }
-}
-
-private extension Array where Element == ClearKeyMaterial {
-    func firstValue() throws -> ClearKeyMaterial {
-        guard let first else {
-            throw ClearKeyError.invalidFormat
-        }
-        return first
     }
 }
