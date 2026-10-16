@@ -23,52 +23,58 @@ struct SourceSettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("SiTV · Cài đặt")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(SettingsTheme.text)
+                    HStack(alignment: .center, spacing: 18) {
+                        ZStack {
+                            Circle().fill(SettingsTheme.orange)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 25, weight: .bold))
+                                .foregroundStyle(.white)
+                                .offset(x: 2)
+                        }
+                        .frame(width: 64, height: 64)
 
-                    Text("Nguồn IPTV · đặt tên và lưu tối đa 5 URL")
-                        .font(.system(size: 15))
-                        .foregroundStyle(SettingsTheme.textDim)
-                        .padding(.top, 18)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Nguồn IPTV")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundStyle(SettingsTheme.text)
+                            Text("Tối đa 5 playlist · nhập xong URL sẽ chuyển thẳng tới Lưu")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(SettingsTheme.textDim)
+                        }
+                    }
+                    .padding(.bottom, 24)
 
-                    VStack(spacing: 10) {
+                    VStack(spacing: 14) {
                         ForEach(drafts.indices, id: \.self) { index in
                             sourceRow(index)
                         }
                     }
-                    .padding(.top, 12)
 
-                    HStack(spacing: 16) {
-                        Button {
+                    HStack(spacing: 18) {
+                        settingsButton(
+                            title: model.isLoading ? "Đang lưu…" : "Lưu nguồn IPTV",
+                            systemImage: "checkmark.circle.fill",
+                            focus: .save,
+                            enabled: !model.isLoading && hasConfiguredSource
+                        ) {
                             saveAndDismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                if model.isLoading {
-                                    ProgressView()
-                                }
-                                Text("Lưu nguồn IPTV")
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 52)
                         }
-                        .buttonStyle(SiTVSettingsButtonStyle())
-                        .disabled(model.isLoading || !hasConfiguredSource)
-                        .focused($focusTarget, equals: .save)
 
-                        Button {
+                        settingsButton(
+                            title: "Đóng",
+                            systemImage: "xmark.circle",
+                            focus: .close,
+                            enabled: true
+                        ) {
                             dismiss()
-                        } label: {
-                            Text("Đóng")
-                                .frame(maxWidth: .infinity, minHeight: 52)
                         }
-                        .buttonStyle(SiTVSettingsButtonStyle())
-                        .focused($focusTarget, equals: .close)
                     }
-                    .padding(.top, 18)
+                    .frame(height: 62)
+                    .padding(.top, 22)
                 }
-                .frame(width: 820)
-                .padding(.top, 34)
-                .padding(.bottom, 28)
+                .frame(width: 1060)
+                .padding(.top, 48)
+                .padding(.bottom, 36)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -81,40 +87,40 @@ struct SourceSettingsView: View {
     }
 
     private func sourceRow(_ index: Int) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                clearDraft(index)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.red)
-                    .frame(width: 50, height: 50)
-            }
-            .buttonStyle(SiTVSettingsButtonStyle())
-            .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
-            .focused($focusTarget, equals: .clear(index))
+        let rowFocused = focusBelongsToRow(index)
 
-            TextField("Tên nguồn \(index + 1)", text: binding(for: index, keyPath: \.name))
+        return HStack(spacing: 14) {
+            Text("\(index + 1)")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(SettingsTheme.orange)
+                .frame(width: 42, height: 42)
+                .background(SettingsTheme.orange.opacity(0.12), in: Circle())
+
+            TextField("Tên nguồn", text: binding(for: index, keyPath: \.name))
                 .textFieldStyle(.plain)
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(SettingsTheme.text)
-                .padding(.horizontal, 14)
-                .frame(width: 180, height: 58)
-                .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
-                .submitLabel(.next)
+                .padding(.horizontal, 16)
+                .frame(width: 230, height: 62)
+                .background(fieldBackground(focused: focusTarget == .name(index)))
                 .focused($focusTarget, equals: .name(index))
+                .focusEffectDisabled()
+                .submitLabel(.next)
                 .onSubmit {
                     focusTarget = .url(index)
                 }
 
-            TextField("https://...", text: binding(for: index, keyPath: \.url))
+            TextField("https://playlist.m3u", text: binding(for: index, keyPath: \.url))
                 .textFieldStyle(.plain)
                 .textInputAutocapitalization(.never)
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(SettingsTheme.text)
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
-                .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
-                .submitLabel(.done)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 62, maxHeight: 62)
+                .background(fieldBackground(focused: focusTarget == .url(index)))
                 .focused($focusTarget, equals: .url(index))
+                .focusEffectDisabled()
+                .submitLabel(.done)
                 .onSubmit {
                     moveToSaveIfPossible()
                 }
@@ -130,16 +136,95 @@ struct SourceSettingsView: View {
                 }
             } label: {
                 Image(systemName: activeSlot == index ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 27, weight: .semibold))
                     .foregroundStyle(activeSlot == index ? SettingsTheme.orange : SettingsTheme.textDim)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 58, height: 58)
+                    .background(buttonBackground(focused: focusTarget == .active(index)))
             }
-            .buttonStyle(SiTVSettingsButtonStyle())
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
             .disabled(!drafts[index].isConfigured)
-            .accessibilityLabel(activeSlot == index ? "Nguồn đang dùng" : "Chọn nguồn \(index + 1)")
             .focused($focusTarget, equals: .active(index))
+
+            Button {
+                clearDraft(index)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 58, height: 58)
+                    .background(buttonBackground(focused: focusTarget == .clear(index)))
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
+            .focused($focusTarget, equals: .clear(index))
         }
-        .frame(height: 58)
+        .padding(.horizontal, 18)
+        .frame(height: 82)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(rowFocused ? SettingsTheme.rowFocused : SettingsTheme.row)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(rowFocused ? SettingsTheme.orange.opacity(0.85) : SettingsTheme.border, lineWidth: rowFocused ? 2 : 1)
+                }
+        )
+    }
+
+    private func settingsButton(
+        title: String,
+        systemImage: String,
+        focus: SettingsFocus,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        let focused = focusTarget == focus
+        return Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(enabled ? SettingsTheme.text : SettingsTheme.textDim.opacity(0.5))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(focused ? SettingsTheme.buttonFocused : SettingsTheme.button)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(focused ? SettingsTheme.orange : SettingsTheme.border, lineWidth: focused ? 3 : 1)
+                        }
+                )
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .disabled(!enabled)
+        .focused($focusTarget, equals: focus)
+    }
+
+    private func fieldBackground(focused: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 14)
+            .fill(SettingsTheme.field)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(focused ? SettingsTheme.orange : SettingsTheme.border, lineWidth: focused ? 3 : 1)
+            }
+    }
+
+    private func buttonBackground(focused: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 14)
+            .fill(focused ? SettingsTheme.buttonFocused : SettingsTheme.button)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(focused ? SettingsTheme.orange : SettingsTheme.border, lineWidth: focused ? 3 : 1)
+            }
+    }
+
+    private func focusBelongsToRow(_ index: Int) -> Bool {
+        switch focusTarget {
+        case .clear(index), .name(index), .url(index), .active(index):
+            return true
+        default:
+            return false
+        }
     }
 
     private var hasConfiguredSource: Bool {
@@ -195,25 +280,14 @@ private enum SettingsFocus: Hashable {
     case close
 }
 
-private struct SiTVSettingsButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var isFocused
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(SettingsTheme.text)
-            .background(
-                isFocused ? SettingsTheme.orange : SettingsTheme.button,
-                in: RoundedRectangle(cornerRadius: 12)
-            )
-            .scaleEffect(isFocused ? 1.035 : 1)
-            .opacity(configuration.isPressed ? 0.82 : 1)
-    }
-}
-
 private enum SettingsTheme {
-    static let black = Color(red: 8 / 255, green: 10 / 255, blue: 13 / 255)
-    static let card = Color(red: 34 / 255, green: 38 / 255, blue: 45 / 255).opacity(0.80)
-    static let button = Color(red: 52 / 255, green: 58 / 255, blue: 68 / 255).opacity(0.80)
+    static let black = Color(red: 7 / 255, green: 9 / 255, blue: 12 / 255)
+    static let row = Color(red: 18 / 255, green: 22 / 255, blue: 28 / 255).opacity(0.97)
+    static let rowFocused = Color(red: 24 / 255, green: 29 / 255, blue: 37 / 255).opacity(0.99)
+    static let field = Color(red: 30 / 255, green: 35 / 255, blue: 43 / 255)
+    static let button = Color(red: 31 / 255, green: 36 / 255, blue: 44 / 255)
+    static let buttonFocused = Color(red: 42 / 255, green: 48 / 255, blue: 58 / 255)
+    static let border = Color.white.opacity(0.10)
     static let orange = Color(red: 1, green: 138 / 255, blue: 42 / 255)
     static let text = Color(red: 1, green: 247 / 255, blue: 244 / 255)
     static let textDim = Color(red: 174 / 255, green: 183 / 255, blue: 194 / 255)
