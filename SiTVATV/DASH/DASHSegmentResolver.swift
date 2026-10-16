@@ -20,6 +20,21 @@ struct DASHResolvedSegment: Sendable, Equatable {
     let time: UInt64?
     let duration: UInt64?
     let url: URL
+    let byteRange: DASHByteRange?
+
+    init(
+        number: UInt64,
+        time: UInt64?,
+        duration: UInt64?,
+        url: URL,
+        byteRange: DASHByteRange? = nil
+    ) {
+        self.number = number
+        self.time = time
+        self.duration = duration
+        self.url = url
+        self.byteRange = byteRange
+    }
 }
 
 struct DASHSegmentResolver {
