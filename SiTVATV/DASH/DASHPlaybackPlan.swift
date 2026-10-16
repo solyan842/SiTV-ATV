@@ -9,7 +9,20 @@ enum DASHPlaybackPlannerError: Error, Equatable {
 struct DASHTrackPlan: Sendable, Equatable {
     let representation: DASHRepresentation
     let initializationURL: URL
+    let initializationRange: DASHByteRange?
     let mediaSegments: [DASHResolvedSegment]
+
+    init(
+        representation: DASHRepresentation,
+        initializationURL: URL,
+        initializationRange: DASHByteRange? = nil,
+        mediaSegments: [DASHResolvedSegment]
+    ) {
+        self.representation = representation
+        self.initializationURL = initializationURL
+        self.initializationRange = initializationRange
+        self.mediaSegments = mediaSegments
+    }
 }
 
 struct DASHPlaybackPlan: Sendable, Equatable {
@@ -73,13 +86,15 @@ struct DASHPlaybackPlanner {
             current.video,
             adaptations: selected.period.adaptationSets.filter { isVideo($0) },
             segmentCount: segmentCount,
-            selection: selection
+            selection: selection,
+            supported: isSupportedVideo
         )
         let audio = try refreshedTrackPlan(
             current.audio,
             adaptations: selected.period.adaptationSets.filter { isAudio($0) },
             segmentCount: segmentCount,
-            selection: selection
+            selection: selection,
+            supported: isSupportedAudio
         )
 
         let plan = DASHPlaybackPlan(
@@ -103,6 +118,7 @@ struct DASHPlaybackPlanner {
         let videoCandidates = period.adaptationSets
             .filter { isVideo($0) }
             .flatMap(\.representations)
+            .filter(isSupportedVideo)
             .filter { representation in
                 guard let maxVideoHeight else { return true }
                 guard let height = representation.height else { return true }
@@ -112,6 +128,7 @@ struct DASHPlaybackPlanner {
         let audioCandidates = period.adaptationSets
             .filter { isAudio($0) }
             .flatMap(\.representations)
+            .filter(isSupportedAudio)
 
         let selection = segmentSelection(for: manifest)
         let video = try selectBest(videoCandidates).map {
@@ -168,11 +185,12 @@ struct DASHPlaybackPlanner {
         _ current: DASHTrackPlan?,
         adaptations: [DASHAdaptationSet],
         segmentCount: Int,
-        selection: DASHSegmentSelection
+        selection: DASHSegmentSelection,
+        supported: (DASHRepresentation) -> Bool
     ) throws -> DASHTrackPlan? {
         guard let current else { return nil }
         let representationID = current.representation.id
-        let candidates = adaptations.flatMap(\.representations)
+        let candidates = adaptations.flatMap(\.representations).filter(supported)
         guard let representation = candidates.first(where: { $0.id == representationID }) else {
             throw DASHPlaybackPlannerError.missingPreservedRepresentation(representationID)
         }
@@ -230,5 +248,24 @@ struct DASHPlaybackPlanner {
             || adaptation.representations.contains {
                 $0.mimeType?.lowercased().hasPrefix("audio/") == true
             }
+    }
+
+    private func isSupportedVideo(_ representation: DASHRepresentation) -> Bool {
+        let mime = representation.mimeType?.lowercased() ?? ""
+        if mime.contains("webm") { return false }
+        let codec = representation.codecs?.lowercased() ?? ""
+        guard !codec.isEmpty else { return true }
+        return codec.contains("avc1")
+            || codec.contains("avc3")
+            || codec.contains("hvc1")
+            || codec.contains("hev1")
+    }
+
+    private func isSupportedAudio(_ representation: DASHRepresentation) -> Bool {
+        let mime = representation.mimeType?.lowercased() ?? ""
+        if mime.contains("webm") { return false }
+        let codec = representation.codecs?.lowercased() ?? ""
+        guard !codec.isEmpty else { return true }
+        return codec.contains("mp4a") || codec.contains("aac")
     }
 }
