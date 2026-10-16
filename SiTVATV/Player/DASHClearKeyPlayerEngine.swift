@@ -37,7 +37,7 @@ final class DASHClearKeyPlayerEngine: PlayerEngine {
         contextBuilder: any DASHPlaybackContextBuilding = DASHPlaybackContextBuilder(),
         playbackController: any DASHPlaybackControlling = DASHClearKeyPlaybackController(),
         maxVideoHeight: Int? = nil,
-        segmentCount: Int = 6
+        segmentCount: Int = 2
     ) {
         self.preparer = preparer
         self.contextBuilder = contextBuilder
