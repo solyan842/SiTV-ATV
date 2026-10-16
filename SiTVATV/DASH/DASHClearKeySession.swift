@@ -101,11 +101,21 @@ struct DASHClearKeySession {
             from: manifestURL,
             headers: source.headers
         )
-        let playbackPlan = try planner.makePlan(
-            from: manifest,
-            maxVideoHeight: maxVideoHeight,
-            segmentCount: segmentCount
-        )
+        let playbackPlan: DASHPlaybackPlan
+        if usesSegmentBase(manifest) {
+            playbackPlan = try await DASHSegmentBasePlanner(loader: loader).makePlan(
+                from: manifest,
+                headers: source.headers,
+                maxVideoHeight: maxVideoHeight,
+                segmentCount: segmentCount
+            )
+        } else {
+            playbackPlan = try planner.makePlan(
+                from: manifest,
+                maxVideoHeight: maxVideoHeight,
+                segmentCount: segmentCount
+            )
+        }
 
         let videoCandidate = try await inspectTrack(
             playbackPlan.video,
@@ -151,7 +161,8 @@ struct DASHClearKeySession {
 
         let initData = try await loader.loadData(
             from: plan.initializationURL,
-            headers: headers
+            headers: headers,
+            byteRange: plan.initializationRange
         )
         try bmffValidator.validateInitializationSegment(initData)
 
@@ -235,6 +246,17 @@ struct DASHClearKeySession {
             encryption: track,
             keyMaterial: material
         )
+    }
+
+    private func usesSegmentBase(_ manifest: DASHManifest) -> Bool {
+        manifest.periods.contains { period in
+            period.adaptationSets.contains { adaptation in
+                adaptation.representations.contains { representation in
+                    representation.segmentBase?.indexRange != nil
+                        && representation.segmentTemplate == nil
+                }
+            }
+        }
     }
 
     private func clearKeyLicenseURL(for source: StreamSource) -> URL? {
