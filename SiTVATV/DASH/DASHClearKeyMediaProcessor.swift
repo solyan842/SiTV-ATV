@@ -7,31 +7,18 @@ protocol CMAFMediaSegmentParsing: Sendable {
 }
 
 struct CMAFMediaSegmentParser: CMAFMediaSegmentParsing, Sendable {
-    private let reader: CMAFMediaSegmentReader
+    private let parser: DASHOffsetAwareMediaParser
 
     init(initSegmentData: Data) async throws {
-        let initReader = try await CMAFInitSegmentReader(bytes: initSegmentData)
-        let tracks = initReader.tracks()
-        var encryptionContexts: [UInt32: TrackEncryptionBox] = [:]
-        for track in tracks {
-            if let parameters = track.encryptionParameters {
-                encryptionContexts[track.trackID] = parameters.makeTrackEncryptionBox()
-            }
-        }
-
-        reader = try CMAFMediaSegmentReader(
-            initSegmentConfiguration: tracks,
-            movieTimescale: initReader.movieTimescale(),
-            trackEncryptionContexts: encryptionContexts
-        )
+        parser = try await DASHOffsetAwareMediaParser(initSegmentData: initSegmentData)
     }
 
     func appendSegmentBytes(_ bytes: Data) async throws -> ParsedMediaSegment {
-        try await reader.appendSegmentBytes(bytes)
+        try await parser.appendSegmentBytes(bytes)
     }
 
     func finalize() async throws {
-        try await reader.finalize()
+        await parser.finalize()
     }
 }
 
@@ -83,9 +70,8 @@ struct DASHClearKeyMediaProcessor: Sendable {
             } else if track.perSampleIVSize == 0, track.constantIV != nil {
                 // ISO/IEC 23001-7 permits tenc to carry a constant IV instead of
                 // a per-sample IV in senc. In that mode there may be no senc
-                // entry at all. The decryptor already supports an empty IV by
-                // resolving track.constantIV; do not pass ciphertext through to
-                // the decoder merely because sample.encryption is nil.
+                // entry at all. The decryptor resolves an empty IV against the
+                // track constant IV, so ciphertext must not be passed through.
                 encryption = CMAFSampleInput.EncryptionMetadata(
                     initializationVector: Data(),
                     subsamples: nil
