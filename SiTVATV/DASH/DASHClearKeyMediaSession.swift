@@ -53,7 +53,7 @@ struct DASHClearKeyMediaSession {
         if let video = preparation.video {
             videoPipeline = try await builder.make(
                 preparedTrack: video,
-                material: preparation.keyMaterial,
+                material: video.keyMaterial ?? preparation.keyMaterial,
                 headers: headers
             )
         } else {
@@ -64,7 +64,7 @@ struct DASHClearKeyMediaSession {
         if let audio = preparation.audio {
             audioPipeline = try await builder.make(
                 preparedTrack: audio,
-                material: preparation.keyMaterial,
+                material: audio.keyMaterial ?? preparation.keyMaterial,
                 headers: headers
             )
         } else {
@@ -86,32 +86,27 @@ struct DASHClearKeyMediaSession {
     }
 
     func processPlannedSegments() async throws -> DASHClearKeyMediaOutput {
-        let video = try await videoPipeline?.processPlannedSegments() ?? []
-        let audio = try await audioPipeline?.processPlannedSegments() ?? []
-        return DASHClearKeyMediaOutput(video: video, audio: audio)
+        async let video = videoPipeline?.processPlannedSegments() ?? []
+        async let audio = audioPipeline?.processPlannedSegments() ?? []
+        return try await DASHClearKeyMediaOutput(video: video, audio: audio)
     }
 
     func process(
         videoSegments: [DASHResolvedSegment],
         audioSegments: [DASHResolvedSegment]
     ) async throws -> DASHClearKeyMediaOutput {
-        var videoOutput: [ParsedMediaSegment] = []
-        videoOutput.reserveCapacity(videoSegments.count)
-        if let videoPipeline {
-            for segment in videoSegments {
-                videoOutput.append(try await videoPipeline.process(segment: segment))
-            }
-        }
-
-        var audioOutput: [ParsedMediaSegment] = []
-        audioOutput.reserveCapacity(audioSegments.count)
-        if let audioPipeline {
-            for segment in audioSegments {
-                audioOutput.append(try await audioPipeline.process(segment: segment))
-            }
-        }
-
-        return DASHClearKeyMediaOutput(video: videoOutput, audio: audioOutput)
+        async let videoOutput = process(
+            segments: videoSegments,
+            pipeline: videoPipeline
+        )
+        async let audioOutput = process(
+            segments: audioSegments,
+            pipeline: audioPipeline
+        )
+        return try await DASHClearKeyMediaOutput(
+            video: videoOutput,
+            audio: audioOutput
+        )
     }
 
     func finalize() async throws {
@@ -138,5 +133,18 @@ struct DASHClearKeyMediaSession {
         if let firstError {
             throw firstError
         }
+    }
+
+    private func process(
+        segments: [DASHResolvedSegment],
+        pipeline: (any DASHClearKeyTrackProcessing)?
+    ) async throws -> [ParsedMediaSegment] {
+        guard let pipeline else { return [] }
+        var output: [ParsedMediaSegment] = []
+        output.reserveCapacity(segments.count)
+        for segment in segments {
+            output.append(try await pipeline.process(segment: segment))
+        }
+        return output
     }
 }
