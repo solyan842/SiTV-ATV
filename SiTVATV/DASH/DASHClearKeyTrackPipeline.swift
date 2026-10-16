@@ -18,6 +18,7 @@ struct DASHClearKeyTrackPipeline {
     private let plan: DASHTrackPlan
     private let headers: [String: String]
     private let incompleteSegmentRetryCount: Int
+    private let bmffValidator = DASHISOBMFFValidator()
 
     init(
         preparedTrack: DASHPreparedTrack,
@@ -66,23 +67,23 @@ struct DASHClearKeyTrackPipeline {
         while true {
             try Task.checkCancellation()
             let data = try await loader.loadData(from: segment.url, headers: headers)
+
             do {
+                try bmffValidator.validateMediaSegment(data)
                 return try await processor.process(segmentData: data)
+            } catch let error as DASHISOBMFFValidationError {
+                guard retry < incompleteSegmentRetryCount else {
+                    throw error
+                }
+                retry += 1
+                try await backoff(retry)
             } catch let error as BinaryIOError {
                 guard case .insufficientData = error,
                       retry < incompleteSegmentRetryCount else {
                     throw error
                 }
-
-                // A live CMAF URL can become visible before its moof/mdat payload
-                // is complete. CMAFMediaSegmentReader does not commit its
-                // cross-segment state until parsing succeeds, so it is safe to
-                // fetch the same segment again before giving up.
                 retry += 1
-                let delayMilliseconds = 150 * retry
-                try await Task.sleep(
-                    nanoseconds: UInt64(delayMilliseconds) * 1_000_000
-                )
+                try await backoff(retry)
             }
         }
     }
@@ -98,5 +99,12 @@ struct DASHClearKeyTrackPipeline {
 
     func finalize() async throws {
         try await processor.finalize()
+    }
+
+    private func backoff(_ retry: Int) async throws {
+        let delayMilliseconds = 200 * retry
+        try await Task.sleep(
+            nanoseconds: UInt64(delayMilliseconds) * 1_000_000
+        )
     }
 }
