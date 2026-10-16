@@ -51,6 +51,20 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
         }
     }
 
+    private struct SegmentBaseBuilder {
+        var indexRange: DASHByteRange?
+        var initializationRange: DASHByteRange?
+        var initializationSourceURL: String?
+
+        func resolved(over parent: SegmentBaseBuilder?) -> DASHSegmentBase {
+            DASHSegmentBase(
+                indexRange: indexRange ?? parent?.indexRange,
+                initializationRange: initializationRange ?? parent?.initializationRange,
+                initializationSourceURL: initializationSourceURL ?? parent?.initializationSourceURL
+            )
+        }
+    }
+
     private struct RepresentationBuilder {
         var id: String?
         var bandwidth: Int?
@@ -60,6 +74,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
         var codecs: String?
         var baseURLText: String?
         var segmentTemplate: SegmentTemplateBuilder?
+        var segmentBase: SegmentBaseBuilder?
         var contentProtections: [DASHContentProtection] = []
     }
 
@@ -71,6 +86,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
         var language: String?
         var baseURLText: String?
         var segmentTemplate: SegmentTemplateBuilder?
+        var segmentBase: SegmentBaseBuilder?
         var contentProtections: [DASHContentProtection] = []
         var representations: [RepresentationBuilder] = []
     }
@@ -81,7 +97,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
         var adaptations: [AdaptationBuilder] = []
     }
 
-    private enum TemplateOwner {
+    private enum SegmentOwner {
         case adaptation
         case representation
     }
@@ -99,7 +115,9 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
     private var currentAdaptation: AdaptationBuilder?
     private var currentRepresentation: RepresentationBuilder?
     private var currentSegmentTemplate: SegmentTemplateBuilder?
-    private var currentTemplateOwner: TemplateOwner?
+    private var currentTemplateOwner: SegmentOwner?
+    private var currentSegmentBase: SegmentBaseBuilder?
+    private var currentSegmentBaseOwner: SegmentOwner?
 
     private var collectingBaseURL = false
     private var baseURLBuffer = ""
@@ -163,6 +181,19 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
                 presentationTimeOffset: Self.uint64(attributeDict["presentationTimeOffset"])
             )
             currentTemplateOwner = currentRepresentation == nil ? .adaptation : .representation
+
+        case "SegmentBase":
+            currentSegmentBase = SegmentBaseBuilder(
+                indexRange: DASHByteRange.parse(attributeDict["indexRange"]),
+                initializationRange: nil,
+                initializationSourceURL: nil
+            )
+            currentSegmentBaseOwner = currentRepresentation == nil ? .adaptation : .representation
+
+        case "Initialization":
+            guard currentSegmentBase != nil else { break }
+            currentSegmentBase?.initializationRange = DASHByteRange.parse(attributeDict["range"])
+            currentSegmentBase?.initializationSourceURL = attributeDict["sourceURL"]
 
         case "S":
             guard currentSegmentTemplate != nil,
@@ -241,6 +272,20 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
             currentSegmentTemplate = nil
             currentTemplateOwner = nil
 
+        case "SegmentBase":
+            if let segmentBase = currentSegmentBase {
+                switch currentSegmentBaseOwner {
+                case .representation:
+                    currentRepresentation?.segmentBase = segmentBase
+                case .adaptation:
+                    currentAdaptation?.segmentBase = segmentBase
+                case .none:
+                    break
+                }
+            }
+            currentSegmentBase = nil
+            currentSegmentBaseOwner = nil
+
         case "Representation":
             guard let representation = currentRepresentation else { break }
             guard representation.id != nil else {
@@ -285,12 +330,15 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
             let adaptations = period.adaptations.map { adaptation in
                 let adaptationBaseURL = Self.resolve(adaptation.baseURLText, against: periodBaseURL)
                 let adaptationTemplate = adaptation.segmentTemplate?.resolved(over: nil)
+                let adaptationSegmentBase = adaptation.segmentBase?.resolved(over: nil)
 
                 let representations = adaptation.representations.compactMap { representation -> DASHRepresentation? in
                     guard let id = representation.id else { return nil }
                     let representationBaseURL = Self.resolve(representation.baseURLText, against: adaptationBaseURL)
                     let effectiveTemplate = representation.segmentTemplate?.resolved(over: adaptation.segmentTemplate)
                         ?? adaptationTemplate
+                    let effectiveSegmentBase = representation.segmentBase?.resolved(over: adaptation.segmentBase)
+                        ?? adaptationSegmentBase
                     return DASHRepresentation(
                         id: id,
                         bandwidth: representation.bandwidth,
@@ -300,6 +348,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
                         codecs: representation.codecs ?? adaptation.codecs,
                         baseURL: representationBaseURL,
                         segmentTemplate: effectiveTemplate,
+                        segmentBase: effectiveSegmentBase,
                         contentProtections: adaptation.contentProtections + representation.contentProtections
                     )
                 }
@@ -312,6 +361,7 @@ private final class ParserDelegate: NSObject, XMLParserDelegate {
                     language: adaptation.language,
                     baseURL: adaptationBaseURL,
                     segmentTemplate: adaptationTemplate,
+                    segmentBase: adaptationSegmentBase,
                     contentProtections: adaptation.contentProtections,
                     representations: representations
                 )
