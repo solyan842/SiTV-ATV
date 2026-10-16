@@ -18,4 +18,17 @@ final class DASHSynchronizedRendererTests: XCTestCase {
         let renderer = DASHSynchronizedRenderer()
         XCTAssertEqual(renderer.displayLayer.videoGravity, .resizeAspect)
     }
+
+    func testFlushBuildsFreshRendererGraphForNextSession() async {
+        let renderer = DASHSynchronizedRenderer()
+        let firstLayer = renderer.displayLayer
+        let firstGeneration = renderer.rendererGeneration
+
+        await renderer.flush()
+
+        XCTAssertFalse(renderer.displayLayer === firstLayer)
+        XCTAssertEqual(renderer.rendererGeneration, firstGeneration + 1)
+        XCTAssertEqual(renderer.rate, 0)
+        XCTAssertEqual(renderer.displayLayer.videoGravity, .resizeAspect)
+    }
 }
