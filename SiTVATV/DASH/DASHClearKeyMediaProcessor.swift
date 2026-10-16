@@ -76,12 +76,31 @@ struct DASHClearKeyMediaProcessor: Sendable {
             guard sample.trackID == track.trackID else {
                 throw DASHClearKeyMediaProcessorError.unexpectedTrackID(sample.trackID)
             }
-            guard sample.encryption != nil else {
+
+            let encryption: CMAFSampleInput.EncryptionMetadata?
+            if let sampleEncryption = sample.encryption {
+                encryption = sampleEncryption
+            } else if track.perSampleIVSize == 0, track.constantIV != nil {
+                // ISO/IEC 23001-7 permits tenc to carry a constant IV instead of
+                // a per-sample IV in senc. In that mode there may be no senc
+                // entry at all. The decryptor already supports an empty IV by
+                // resolving track.constantIV; do not pass ciphertext through to
+                // the decoder merely because sample.encryption is nil.
+                encryption = CMAFSampleInput.EncryptionMetadata(
+                    initializationVector: Data(),
+                    subsamples: nil
+                )
+            } else {
+                encryption = nil
+            }
+
+            guard let encryption else {
                 return sample
             }
 
             let clearBytes = try decryptor.decrypt(
-                sample: sample,
+                bytes: sample.bytes,
+                encryption: encryption,
                 track: track,
                 material: material
             )
