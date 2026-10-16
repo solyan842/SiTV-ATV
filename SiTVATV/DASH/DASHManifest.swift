@@ -10,12 +10,49 @@ struct DASHManifest: Sendable, Equatable {
     let minimumUpdatePeriod: TimeInterval?
     let baseURL: URL
     let periods: [DASHPeriod]
+    let availabilityStartTime: Date?
+    let publishTime: Date?
+    let timeShiftBufferDepth: TimeInterval?
+    let suggestedPresentationDelay: TimeInterval?
+
+    init(
+        type: ManifestType,
+        minimumUpdatePeriod: TimeInterval?,
+        baseURL: URL,
+        periods: [DASHPeriod],
+        availabilityStartTime: Date? = nil,
+        publishTime: Date? = nil,
+        timeShiftBufferDepth: TimeInterval? = nil,
+        suggestedPresentationDelay: TimeInterval? = nil
+    ) {
+        self.type = type
+        self.minimumUpdatePeriod = minimumUpdatePeriod
+        self.baseURL = baseURL
+        self.periods = periods
+        self.availabilityStartTime = availabilityStartTime
+        self.publishTime = publishTime
+        self.timeShiftBufferDepth = timeShiftBufferDepth
+        self.suggestedPresentationDelay = suggestedPresentationDelay
+    }
 }
 
 struct DASHPeriod: Sendable, Equatable {
     let id: String?
     let baseURL: URL
     let adaptationSets: [DASHAdaptationSet]
+    let start: TimeInterval?
+
+    init(
+        id: String?,
+        baseURL: URL,
+        adaptationSets: [DASHAdaptationSet],
+        start: TimeInterval? = nil
+    ) {
+        self.id = id
+        self.baseURL = baseURL
+        self.adaptationSets = adaptationSets
+        self.start = start
+    }
 }
 
 struct DASHAdaptationSet: Sendable, Equatable {
