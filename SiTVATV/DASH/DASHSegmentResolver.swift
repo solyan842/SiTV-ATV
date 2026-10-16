@@ -58,7 +58,8 @@ struct DASHSegmentResolver {
     func mediaSegments(
         for representation: DASHRepresentation,
         maxCount: Int,
-        selection: DASHSegmentSelection = .earliest
+        selection: DASHSegmentSelection = .earliest,
+        firstNumber: UInt64? = nil
     ) throws -> [DASHResolvedSegment] {
         guard maxCount > 0 else { return [] }
         guard let template = representation.segmentTemplate else {
@@ -82,13 +83,14 @@ struct DASHSegmentResolver {
             return []
         }
 
-        // A duration-only dynamic template needs availability timing (for example
-        // availabilityStartTime/publishTime) to derive the real live edge. Until
-        // that timing is modeled, keep deterministic startNumber behavior rather
-        // than pretending that the first generated window is the current live edge.
+        // For a duration-only live template the planner can supply the first
+        // segment number of the current live window. Static and timing-unknown
+        // manifests keep the deterministic startNumber fallback.
+        let resolvedFirstNumber = max(firstNumber ?? template.startNumber, template.startNumber)
         return try (0..<maxCount).map { offset in
-            let number = template.startNumber + UInt64(offset)
-            let time = UInt64(offset) * duration
+            let number = resolvedFirstNumber + UInt64(offset)
+            let relativeIndex = number - template.startNumber
+            let time = relativeIndex * duration
             let path = try render(
                 media,
                 representation: representation,
