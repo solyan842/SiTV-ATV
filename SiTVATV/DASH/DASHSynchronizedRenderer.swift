@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import CoreMedia
 import Foundation
 
@@ -7,27 +8,20 @@ enum DASHSynchronizedRendererError: Error, Equatable {
 }
 
 @MainActor
-final class DASHSynchronizedRenderer {
-    let displayLayer: AVSampleBufferDisplayLayer
+final class DASHSynchronizedRenderer: ObservableObject {
+    @Published private(set) var displayLayer: AVSampleBufferDisplayLayer
 
-    private let synchronizer: AVSampleBufferRenderSynchronizer
-    private let videoRenderer: AVSampleBufferVideoRenderer
-    private let audioRenderer: AVSampleBufferAudioRenderer
+    private var synchronizer: AVSampleBufferRenderSynchronizer
+    private var videoRenderer: AVSampleBufferVideoRenderer
+    private var audioRenderer: AVSampleBufferAudioRenderer
+    private(set) var rendererGeneration: UInt64 = 0
 
     init() {
-        let displayLayer = AVSampleBufferDisplayLayer()
-        displayLayer.videoGravity = .resizeAspect
-
-        let synchronizer = AVSampleBufferRenderSynchronizer()
-        let videoRenderer = displayLayer.sampleBufferRenderer
-        let audioRenderer = AVSampleBufferAudioRenderer()
-        synchronizer.addRenderer(videoRenderer)
-        synchronizer.addRenderer(audioRenderer)
-
-        self.displayLayer = displayLayer
-        self.synchronizer = synchronizer
-        self.videoRenderer = videoRenderer
-        self.audioRenderer = audioRenderer
+        let graph = Self.makeRendererGraph()
+        self.displayLayer = graph.displayLayer
+        self.synchronizer = graph.synchronizer
+        self.videoRenderer = graph.videoRenderer
+        self.audioRenderer = graph.audioRenderer
     }
 
     var rate: Float {
@@ -35,12 +29,7 @@ final class DASHSynchronizedRenderer {
     }
 
     func start(at sourceTime: CMTime = .zero) {
-        // AVSampleBufferDisplayLayer can remain in a failed state after malformed
-        // or incomplete media. Recover it before a later channel reuses this
-        // long-lived renderer instance.
-        if displayLayer.status == .failed {
-            displayLayer.flushAndRemoveImage()
-        }
+        ensureVideoRendererIsUsable()
         synchronizer.setRate(1, time: sourceTime)
     }
 
@@ -49,9 +38,7 @@ final class DASHSynchronizedRenderer {
     }
 
     func primeVideo(_ sampleBuffer: CMSampleBuffer) {
-        if displayLayer.status == .failed {
-            displayLayer.flushAndRemoveImage()
-        }
+        ensureVideoRendererIsUsable()
         videoRenderer.enqueue(sampleBuffer)
     }
 
@@ -70,10 +57,36 @@ final class DASHSynchronizedRenderer {
     }
 
     func flush() async {
+        // A failed AVSampleBufferVideoRenderer cannot be made reusable merely by
+        // flushing it. More importantly, failed/ended live sessions can leave the
+        // synchronizer timeline and decoder graph in a state that is unsuitable for
+        // the next channel. Rebuild the complete render graph on every session stop
+        // while keeping this observable host object stable for SwiftUI.
+        rebuildRendererGraph()
+    }
+
+    private func ensureVideoRendererIsUsable() {
+        if videoRenderer.status == .failed {
+            rebuildRendererGraph()
+            return
+        }
+        if videoRenderer.requiresFlushToResumeDecoding {
+            videoRenderer.flush()
+        }
+    }
+
+    private func rebuildRendererGraph() {
         synchronizer.rate = 0
         videoRenderer.flush()
         audioRenderer.flush()
         displayLayer.flushAndRemoveImage()
+
+        let graph = Self.makeRendererGraph()
+        synchronizer = graph.synchronizer
+        videoRenderer = graph.videoRenderer
+        audioRenderer = graph.audioRenderer
+        displayLayer = graph.displayLayer
+        rendererGeneration &+= 1
     }
 
     private func waitUntilVideoReady() async throws {
@@ -81,10 +94,13 @@ final class DASHSynchronizedRenderer {
             guard synchronizer.rate != 0 else {
                 throw DASHSynchronizedRendererError.notRunning
             }
+            if videoRenderer.status == .failed {
+                throw DASHSynchronizedRendererError.notRunning
+            }
             try Task.checkCancellation()
             try await Task.sleep(nanoseconds: 2_000_000)
         }
-        guard synchronizer.rate != 0 else {
+        guard synchronizer.rate != 0, videoRenderer.status != .failed else {
             throw DASHSynchronizedRendererError.notRunning
         }
     }
@@ -100,5 +116,23 @@ final class DASHSynchronizedRenderer {
         guard synchronizer.rate != 0 else {
             throw DASHSynchronizedRendererError.notRunning
         }
+    }
+
+    private static func makeRendererGraph() -> (
+        displayLayer: AVSampleBufferDisplayLayer,
+        synchronizer: AVSampleBufferRenderSynchronizer,
+        videoRenderer: AVSampleBufferVideoRenderer,
+        audioRenderer: AVSampleBufferAudioRenderer
+    ) {
+        let displayLayer = AVSampleBufferDisplayLayer()
+        displayLayer.videoGravity = .resizeAspect
+
+        let synchronizer = AVSampleBufferRenderSynchronizer()
+        let videoRenderer = displayLayer.sampleBufferRenderer
+        let audioRenderer = AVSampleBufferAudioRenderer()
+        synchronizer.addRenderer(videoRenderer)
+        synchronizer.addRenderer(audioRenderer)
+
+        return (displayLayer, synchronizer, videoRenderer, audioRenderer)
     }
 }
