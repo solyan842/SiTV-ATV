@@ -6,6 +6,7 @@ struct SourceSettingsView: View {
 
     @State private var drafts: [PlaylistSource]
     @State private var activeSlot: Int
+    @FocusState private var focusTarget: SettingsFocus?
 
     init(model: AppModel) {
         self.model = model
@@ -40,11 +41,7 @@ struct SourceSettingsView: View {
 
                     HStack(spacing: 16) {
                         Button {
-                            Task {
-                                normalizeActiveSlot()
-                                await model.saveSources(drafts, activeSlot: activeSlot)
-                                dismiss()
-                            }
+                            saveAndDismiss()
                         } label: {
                             HStack(spacing: 10) {
                                 if model.isLoading {
@@ -56,6 +53,7 @@ struct SourceSettingsView: View {
                         }
                         .buttonStyle(SiTVSettingsButtonStyle())
                         .disabled(model.isLoading || !hasConfiguredSource)
+                        .focused($focusTarget, equals: .save)
 
                         Button {
                             dismiss()
@@ -64,6 +62,7 @@ struct SourceSettingsView: View {
                                 .frame(maxWidth: .infinity, minHeight: 52)
                         }
                         .buttonStyle(SiTVSettingsButtonStyle())
+                        .focused($focusTarget, equals: .close)
                     }
                     .padding(.top, 18)
                 }
@@ -71,6 +70,12 @@ struct SourceSettingsView: View {
                 .padding(.top, 34)
                 .padding(.bottom, 28)
                 .frame(maxWidth: .infinity)
+            }
+        }
+        .onAppear {
+            let slot = drafts.indices.contains(activeSlot) ? activeSlot : 0
+            DispatchQueue.main.async {
+                focusTarget = .name(slot)
             }
         }
     }
@@ -87,6 +92,7 @@ struct SourceSettingsView: View {
             }
             .buttonStyle(SiTVSettingsButtonStyle())
             .disabled(!drafts[index].isConfigured && drafts[index].name.isEmpty && drafts[index].url.isEmpty)
+            .focused($focusTarget, equals: .clear(index))
 
             TextField("Tên nguồn \(index + 1)", text: binding(for: index, keyPath: \.name))
                 .textFieldStyle(.plain)
@@ -94,6 +100,11 @@ struct SourceSettingsView: View {
                 .padding(.horizontal, 14)
                 .frame(width: 180, height: 58)
                 .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
+                .submitLabel(.next)
+                .focused($focusTarget, equals: .name(index))
+                .onSubmit {
+                    focusTarget = .url(index)
+                }
 
             TextField("https://...", text: binding(for: index, keyPath: \.url))
                 .textFieldStyle(.plain)
@@ -102,6 +113,16 @@ struct SourceSettingsView: View {
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
                 .background(SettingsTheme.card, in: RoundedRectangle(cornerRadius: 14))
+                .submitLabel(.done)
+                .focused($focusTarget, equals: .url(index))
+                .onSubmit {
+                    moveToSaveIfPossible()
+                }
+                .onMoveCommand { direction in
+                    if direction == .down {
+                        moveToSaveIfPossible()
+                    }
+                }
 
             Button {
                 if drafts[index].isConfigured {
@@ -116,6 +137,7 @@ struct SourceSettingsView: View {
             .buttonStyle(SiTVSettingsButtonStyle())
             .disabled(!drafts[index].isConfigured)
             .accessibilityLabel(activeSlot == index ? "Nguồn đang dùng" : "Chọn nguồn \(index + 1)")
+            .focused($focusTarget, equals: .active(index))
         }
         .frame(height: 58)
     }
@@ -129,6 +151,7 @@ struct SourceSettingsView: View {
         if activeSlot == index {
             normalizeActiveSlot()
         }
+        focusTarget = .name(index)
     }
 
     private func normalizeActiveSlot() {
@@ -140,12 +163,36 @@ struct SourceSettingsView: View {
         }
     }
 
+    private func moveToSaveIfPossible() {
+        normalizeActiveSlot()
+        if hasConfiguredSource {
+            focusTarget = .save
+        }
+    }
+
+    private func saveAndDismiss() {
+        Task {
+            normalizeActiveSlot()
+            await model.saveSources(drafts, activeSlot: activeSlot)
+            dismiss()
+        }
+    }
+
     private func binding(for index: Int, keyPath: WritableKeyPath<PlaylistSource, String>) -> Binding<String> {
         Binding(
             get: { drafts[index][keyPath: keyPath] },
             set: { drafts[index][keyPath: keyPath] = $0 }
         )
     }
+}
+
+private enum SettingsFocus: Hashable {
+    case clear(Int)
+    case name(Int)
+    case url(Int)
+    case active(Int)
+    case save
+    case close
 }
 
 private struct SiTVSettingsButtonStyle: ButtonStyle {
