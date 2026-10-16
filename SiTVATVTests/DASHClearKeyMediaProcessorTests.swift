@@ -45,6 +45,44 @@ final class DASHClearKeyMediaProcessorTests: XCTestCase {
         XCTAssertTrue(wasFinalized)
     }
 
+    func testDecryptsConstantIVSampleWithoutSENCMetadata() async throws {
+        let key = try XCTUnwrap(Data(hex: "2b7e151628aed2a6abf7158809cf4f3c"))
+        let iv = try XCTUnwrap(Data(hex: "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"))
+        let ciphertext = try XCTUnwrap(Data(hex: "874d6191b620e3261bef6864990db6ce"))
+        let plaintext = try XCTUnwrap(Data(hex: "6bc1bee22e409f96e93d7e117393172a"))
+        let keyID = Data(repeating: 0x44, count: 16)
+
+        let sample = CMAFParsedSample(
+            trackID: 7,
+            bytes: ciphertext,
+            durationInTimescale: 3_000,
+            compositionTimeOffset: 0,
+            flags: .syncSample,
+            encryption: nil,
+            decodeTime: 12_000
+        )
+        let track = CENCTrackInfo(
+            trackID: 7,
+            kind: .video,
+            scheme: .cenc,
+            keyID: keyID,
+            perSampleIVSize: 0,
+            constantIV: iv,
+            cryptByteBlock: 0,
+            skipByteBlock: 0
+        )
+        let processor = DASHClearKeyMediaProcessor(
+            parser: StubMediaParser(segment: makeSegment(sample: sample)),
+            track: track,
+            material: ClearKeyMaterial(keyID: keyID, key: key)
+        )
+
+        let result = try await processor.process(segmentData: Data([0x01]))
+        let clearSample = try XCTUnwrap(result.samples.first)
+        XCTAssertEqual(clearSample.bytes, plaintext)
+        XCTAssertNil(clearSample.encryption)
+    }
+
     func testRejectsSampleFromUnexpectedTrack() async throws {
         let keyID = Data(repeating: 0x22, count: 16)
         let sample = CMAFParsedSample(
