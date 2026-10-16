@@ -10,7 +10,7 @@ struct PlayerView: View {
 
             switch model.activeAttempt?.engine {
             case .dashClearKey:
-                DASHDisplayLayerView(displayLayer: model.dashRenderer.displayLayer)
+                DASHRendererSurface(renderer: model.dashRenderer)
                     .ignoresSafeArea()
                     .task(id: model.activeAttempt) {
                         await model.resumeDASHPlayback()
@@ -82,5 +82,14 @@ struct PlayerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .padding(.trailing, 110)
+    }
+}
+
+private struct DASHRendererSurface: View {
+    @ObservedObject var renderer: DASHSynchronizedRenderer
+
+    var body: some View {
+        DASHDisplayLayerView(displayLayer: renderer.displayLayer)
+            .id(renderer.rendererGeneration)
     }
 }
