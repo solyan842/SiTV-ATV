@@ -66,7 +66,11 @@ struct DASHClearKeyTrackPipeline {
         var retry = 0
         while true {
             try Task.checkCancellation()
-            let data = try await loader.loadData(from: segment.url, headers: headers)
+            let data = try await loader.loadData(
+                from: segment.url,
+                headers: headers,
+                byteRange: segment.byteRange
+            )
 
             do {
                 try bmffValidator.validateMediaSegment(data)
