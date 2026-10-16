@@ -2,17 +2,29 @@ import SwiftUI
 
 @main
 struct SiTVATVApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = AppModel()
 
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
-                // SiTV draws its own Android-parity card/group selectors.
-                // Disable tvOS's automatic white focus ring/hover bloom for
-                // this whole hierarchy so it cannot spill outside channel rows.
                 .focusEffectDisabled()
                 .task {
                     await model.bootstrap()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .background:
+                        model.appDidEnterBackground()
+                    case .active:
+                        Task {
+                            await model.appDidBecomeActive()
+                        }
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
                 }
         }
     }
