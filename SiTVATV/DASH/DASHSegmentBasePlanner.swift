@@ -42,18 +42,18 @@ struct DASHSegmentBasePlanner {
             .filter { $0.segmentBase?.indexRange != nil }
             .filter(isSupportedAudio)
 
-        async let videoPlan = makeTrackPlan(
+        let videoPlan = try await makeTrackPlan(
             representation: selectBest(videoCandidates),
             headers: headers,
             segmentCount: segmentCount
         )
-        async let audioPlan = makeTrackPlan(
+        let audioPlan = try await makeTrackPlan(
             representation: selectBest(audioCandidates),
             headers: headers,
             segmentCount: segmentCount
         )
 
-        let plan = try await DASHPlaybackPlan(
+        let plan = DASHPlaybackPlan(
             video: videoPlan,
             audio: audioPlan,
             periodIdentity: selected.identity
@@ -186,8 +186,8 @@ struct DASHSegmentBasePlanner {
         }
 
         let version = bytes[cursor]
-        cursor += 4 // version + flags
-        _ = readUInt32(bytes, at: cursor) // reference_ID
+        cursor += 4
+        _ = readUInt32(bytes, at: cursor)
         cursor += 4
         let timescale = readUInt32(bytes, at: cursor)
         cursor += 4
@@ -221,17 +221,17 @@ struct DASHSegmentBasePlanner {
         guard cursor + 4 <= bytes.count else {
             throw DASHSegmentBasePlannerError.invalidSIDX
         }
-        cursor += 2 // reserved
+        cursor += 2
         let referenceCount = Int(readUInt16(bytes, at: cursor))
         cursor += 2
 
-        let absoluteSIDXEnd = try checkedAdd(
+        let mediaStart = try checkedAdd(
             absoluteRangeStart,
             UInt64(boxOffset),
             boxSize,
             firstOffset
         )
-        var mediaOffset = absoluteSIDXEnd
+        var mediaOffset = mediaStart
         var presentationTime = earliestPresentationTime
         var number: UInt64 = 1
         var output: [DASHResolvedSegment] = []
@@ -245,7 +245,7 @@ struct DASHSegmentBasePlanner {
             cursor += 4
             let durationTicks = readUInt32(bytes, at: cursor)
             cursor += 4
-            _ = readUInt32(bytes, at: cursor) // SAP data
+            _ = readUInt32(bytes, at: cursor)
             cursor += 4
 
             let isNestedIndex = (referenceWord & 0x8000_0000) != 0
@@ -285,7 +285,11 @@ struct DASHSegmentBasePlanner {
         guard !manifest.periods.isEmpty else {
             throw DASHSegmentBasePlannerError.missingPeriod
         }
-        let index = manifest.type == .dynamic ? manifest.periods.count - 1 : 0
+        let index: Int
+        switch manifest.type {
+        case .static: index = 0
+        case .dynamic: index = manifest.periods.count - 1
+        }
         let period = manifest.periods[index]
         let identity = period.id.map { "id:\($0)" }
             ?? "index:\(index)|base:\(period.baseURL.absoluteString)"
