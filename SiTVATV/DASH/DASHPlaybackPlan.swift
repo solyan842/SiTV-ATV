@@ -85,6 +85,8 @@ struct DASHPlaybackPlanner {
         let video = try refreshedTrackPlan(
             current.video,
             adaptations: selected.period.adaptationSets.filter { isVideo($0) },
+            manifest: manifest,
+            period: selected.period,
             segmentCount: segmentCount,
             selection: selection,
             supported: isSupportedVideo
@@ -92,6 +94,8 @@ struct DASHPlaybackPlanner {
         let audio = try refreshedTrackPlan(
             current.audio,
             adaptations: selected.period.adaptationSets.filter { isAudio($0) },
+            manifest: manifest,
+            period: selected.period,
             segmentCount: segmentCount,
             selection: selection,
             supported: isSupportedAudio
@@ -134,6 +138,8 @@ struct DASHPlaybackPlanner {
         let video = try selectBest(videoCandidates).map {
             try makeTrackPlan(
                 representation: $0,
+                manifest: manifest,
+                period: period,
                 segmentCount: segmentCount,
                 selection: selection
             )
@@ -141,6 +147,8 @@ struct DASHPlaybackPlanner {
         let audio = try selectBest(audioCandidates).map {
             try makeTrackPlan(
                 representation: $0,
+                manifest: manifest,
+                period: period,
                 segmentCount: segmentCount,
                 selection: selection
             )
@@ -184,6 +192,8 @@ struct DASHPlaybackPlanner {
     private func refreshedTrackPlan(
         _ current: DASHTrackPlan?,
         adaptations: [DASHAdaptationSet],
+        manifest: DASHManifest,
+        period: DASHPeriod,
         segmentCount: Int,
         selection: DASHSegmentSelection,
         supported: (DASHRepresentation) -> Bool
@@ -196,6 +206,8 @@ struct DASHPlaybackPlanner {
         }
         return try makeTrackPlan(
             representation: representation,
+            manifest: manifest,
+            period: period,
             segmentCount: segmentCount,
             selection: selection
         )
@@ -203,6 +215,8 @@ struct DASHPlaybackPlanner {
 
     private func makeTrackPlan(
         representation: DASHRepresentation,
+        manifest: DASHManifest,
+        period: DASHPeriod,
         segmentCount: Int,
         selection: DASHSegmentSelection
     ) throws -> DASHTrackPlan {
@@ -212,9 +226,57 @@ struct DASHPlaybackPlanner {
             mediaSegments: try resolver.mediaSegments(
                 for: representation,
                 maxCount: segmentCount,
-                selection: selection
+                selection: selection,
+                firstNumber: liveWindowFirstNumber(
+                    for: representation,
+                    manifest: manifest,
+                    period: period,
+                    segmentCount: segmentCount
+                )
             )
         )
+    }
+
+    private func liveWindowFirstNumber(
+        for representation: DASHRepresentation,
+        manifest: DASHManifest,
+        period: DASHPeriod,
+        segmentCount: Int
+    ) -> UInt64? {
+        guard manifest.type == .dynamic,
+              let template = representation.segmentTemplate,
+              template.timeline.isEmpty,
+              let duration = template.duration,
+              duration > 0,
+              template.timescale > 0,
+              let availabilityStartTime = manifest.availabilityStartTime else {
+            return nil
+        }
+
+        let segmentDuration = Double(duration) / Double(template.timescale)
+        guard segmentDuration.isFinite, segmentDuration > 0 else { return nil }
+
+        // publishTime reflects the MPD producer's clock and avoids depending on
+        // Apple TV wall-clock skew. If it is absent, use the device clock.
+        let referenceTime = manifest.publishTime ?? Date()
+        let periodStart = period.start ?? 0
+        let elapsedPresentation = referenceTime.timeIntervalSince(availabilityStartTime) - periodStart
+        guard elapsedPresentation > 0 else { return template.startNumber }
+
+        // Stay a small distance behind the absolute edge so the selected segment
+        // has had time to become available at the CDN. Respect an MPD-provided
+        // delay, but never use less than two media segments for live TV.
+        let liveDelay = max(manifest.suggestedPresentationDelay ?? 0, segmentDuration * 2)
+        let targetPresentation = max(elapsedPresentation - liveDelay, 0)
+        let presentationTimeOffset = Double(template.presentationTimeOffset) / Double(template.timescale)
+        let templateTime = max(targetPresentation + presentationTimeOffset, 0)
+        let liveIndex = UInt64(floor(templateTime / segmentDuration))
+        let (latestNumber, overflow) = template.startNumber.addingReportingOverflow(liveIndex)
+        guard !overflow else { return nil }
+
+        let availableBefore = latestNumber - template.startNumber
+        let requestedBack = UInt64(max(segmentCount - 1, 0))
+        return latestNumber - min(availableBefore, requestedBack)
     }
 
     private func segmentSelection(for manifest: DASHManifest) -> DASHSegmentSelection {
