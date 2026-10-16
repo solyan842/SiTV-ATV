@@ -220,8 +220,8 @@ struct SourceSettingsView: View {
 
     private func focusBelongsToRow(_ index: Int) -> Bool {
         switch focusTarget {
-        case .clear(index), .name(index), .url(index), .active(index):
-            return true
+        case .clear(let value), .name(let value), .url(let value), .active(let value):
+            return value == index
         default:
             return false
         }
