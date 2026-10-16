@@ -25,6 +25,13 @@ enum DASHResourceLoaderError: Error, Equatable {
     case httpStatus(Int)
     case invalidByteRange
     case incompleteByteRange(expected: Int, available: Int)
+    case invalidContentRange(String)
+    case mismatchedContentRange(
+        expectedStart: UInt64,
+        expectedEnd: UInt64,
+        actualStart: UInt64,
+        actualEnd: UInt64
+    )
 }
 
 protocol DASHResourceLoading {
@@ -98,18 +105,61 @@ struct DASHResourceLoader: DASHResourceLoading {
 
         let expected = try Self.expectedLength(for: byteRange)
         if response.statusCode == 206 {
-            guard data.count >= expected else {
+            if let rawContentRange = response.value(forHTTPHeaderField: "Content-Range") {
+                let actual = try Self.parseContentRange(rawContentRange)
+                guard actual.start <= byteRange.start,
+                      actual.end >= byteRange.end else {
+                    throw DASHResourceLoaderError.mismatchedContentRange(
+                        expectedStart: byteRange.start,
+                        expectedEnd: byteRange.end,
+                        actualStart: actual.start,
+                        actualEnd: actual.end
+                    )
+                }
+
+                let actualLength64 = actual.end - actual.start + 1
+                guard actualLength64 <= UInt64(Int.max) else {
+                    throw DASHResourceLoaderError.invalidByteRange
+                }
+                let actualLength = Int(actualLength64)
+                guard data.count >= actualLength else {
+                    throw DASHResourceLoaderError.incompleteByteRange(
+                        expected: actualLength,
+                        available: data.count
+                    )
+                }
+
+                let relativeStart64 = byteRange.start - actual.start
+                let relativeEnd64 = byteRange.end - actual.start
+                guard relativeStart64 <= UInt64(Int.max),
+                      relativeEnd64 <= UInt64(Int.max) else {
+                    throw DASHResourceLoaderError.invalidByteRange
+                }
+                let relativeStart = Int(relativeStart64)
+                let relativeEnd = Int(relativeEnd64)
+                guard relativeEnd < data.count else {
+                    throw DASHResourceLoaderError.incompleteByteRange(
+                        expected: expected,
+                        available: max(data.count - relativeStart, 0)
+                    )
+                }
+                return data.subdata(in: relativeStart..<(relativeEnd + 1))
+            }
+
+            // A few compliant-enough CDNs omit Content-Range even for a 206.
+            // Keep compatibility only when the body itself exactly matches the
+            // requested length; a larger ambiguous body must not be guessed.
+            guard data.count == expected else {
                 throw DASHResourceLoaderError.incompleteByteRange(
                     expected: expected,
                     available: data.count
                 )
             }
-            return data.count == expected ? data : Data(data.prefix(expected))
+            return data
         }
 
-        // Some CDNs legally ignore Range and answer 200 with the full object.
-        // Slice the requested range locally rather than feeding the whole MP4
-        // into a parser that expects an init/index/media sub-range.
+        // Some CDNs ignore Range and answer 200 with the full object. Slice the
+        // requested range locally; never feed a full MP4 to a sub-range parser.
         if data.count == expected {
             return data
         }
@@ -153,6 +203,19 @@ struct DASHResourceLoader: DASHResourceLoading {
             )
         }
         return data.subdata(in: start..<(end + 1))
+    }
+
+    private static func parseContentRange(_ value: String) throws -> DASHByteRange {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("bytes ") else {
+            throw DASHResourceLoaderError.invalidContentRange(value)
+        }
+        let payload = trimmed.dropFirst(6)
+        let rangePart = payload.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
+        guard let range = DASHByteRange.parse(rangePart) else {
+            throw DASHResourceLoaderError.invalidContentRange(value)
+        }
+        return range
     }
 
     private static func expectedLength(for range: DASHByteRange) throws -> Int {
