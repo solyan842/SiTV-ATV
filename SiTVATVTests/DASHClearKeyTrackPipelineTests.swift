@@ -119,8 +119,10 @@ final class DASHClearKeyTrackPipelineTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual((await loader.requests()).count, 2)
-        XCTAssertTrue((await processor.payloads()).isEmpty)
+        let requests = await loader.requests()
+        let payloads = await processor.payloads()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(payloads.isEmpty)
     }
 
     func testRejectsOutOfRangeSegmentIndexBeforeLoading() async throws {
