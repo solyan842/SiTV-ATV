@@ -66,10 +66,16 @@ final class DASHManifestParserTests: XCTestCase {
         XCTAssertEqual(second.segmentTemplate?.timeline.count, 2)
     }
 
-    func testParsesDynamicMinimumUpdatePeriodAndCompactKID() throws {
+    func testParsesDynamicClockMetadataAndCompactKID() throws {
         let xml = """
-        <MPD xmlns:cenc="urn:mpeg:cenc:2013" type="dynamic" minimumUpdatePeriod="PT6.5S">
-          <Period>
+        <MPD xmlns:cenc="urn:mpeg:cenc:2013"
+             type="dynamic"
+             minimumUpdatePeriod="PT6.5S"
+             availabilityStartTime="2026-10-16T08:00:00Z"
+             publishTime="2026-10-16T08:01:00.500Z"
+             timeShiftBufferDepth="PT30S"
+             suggestedPresentationDelay="PT4S">
+          <Period start="PT10S">
             <AdaptationSet contentType="audio" mimeType="audio/mp4">
               <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" cenc:default_KID="00112233445566778899aabbccddeeff"/>
               <Representation id="audio" bandwidth="128000">
@@ -88,6 +94,14 @@ final class DASHManifestParserTests: XCTestCase {
         XCTAssertEqual(manifest.type, .dynamic)
         let minimumUpdatePeriod = try XCTUnwrap(manifest.minimumUpdatePeriod)
         XCTAssertEqual(minimumUpdatePeriod, 6.5, accuracy: 0.0001)
+        XCTAssertEqual(manifest.timeShiftBufferDepth, 30)
+        XCTAssertEqual(manifest.suggestedPresentationDelay, 4)
+        XCTAssertEqual(manifest.periods.first?.start, 10)
+
+        let availabilityStartTime = try XCTUnwrap(manifest.availabilityStartTime)
+        let publishTime = try XCTUnwrap(manifest.publishTime)
+        XCTAssertEqual(publishTime.timeIntervalSince(availabilityStartTime), 60.5, accuracy: 0.001)
+
         let representation = try XCTUnwrap(manifest.periods.first?.adaptationSets.first?.representations.first)
         XCTAssertEqual(representation.defaultKeyID?.uuidString.lowercased(), "00112233-4455-6677-8899-aabbccddeeff")
         XCTAssertEqual(representation.segmentTemplate?.duration, 96000)
