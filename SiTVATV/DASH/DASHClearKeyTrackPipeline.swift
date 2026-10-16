@@ -75,7 +75,7 @@ struct DASHClearKeyTrackPipeline {
                 try bmffValidator.validateMediaSegment(data)
                 return try await processor.process(segmentData: data)
             } catch let error as DASHResourceLoaderError {
-                guard case .incompleteByteRange = error,
+                guard isRetryableRangeError(error),
                       retry < incompleteSegmentRetryCount else {
                     throw error
                 }
@@ -109,6 +109,15 @@ struct DASHClearKeyTrackPipeline {
 
     func finalize() async throws {
         try await processor.finalize()
+    }
+
+    private func isRetryableRangeError(_ error: DASHResourceLoaderError) -> Bool {
+        switch error {
+        case .incompleteByteRange, .invalidContentRange, .mismatchedContentRange:
+            return true
+        default:
+            return false
+        }
     }
 
     private func backoff(_ retry: Int) async throws {
